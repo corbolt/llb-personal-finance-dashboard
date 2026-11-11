@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens.
+ *
+ * The interface is deliberately neutral — warm greys for chrome and ink — so
+ * that the only saturated colour on a page is data. Chart colours come from a
+ * palette validated for colour-vision deficiency and contrast on exactly these
+ * surfaces; change a surface or series colour and it has to be re-validated.
+ *
+ * `light-dark()` resolves each token from the active `color-scheme`: the
+ * operating system's preference by default, or the theme picked in the app,
+ * which sets `data-theme` on <html>.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* surfaces */
+  --plane: light-dark(#f9f9f7, #0d0d0d);
+  --surface: light-dark(#fcfcfb, #1a1a19);
+  --popover: light-dark(#ffffff, #232322);
+  --wash: light-dark(#f0efec, #262624);
+  --wash-strong: light-dark(#e6e5e0, #32322f);
+
+  /* ink */
+  --ink: light-dark(#0b0b0b, #f0efec);
+  --ink-2: light-dark(#52514e, #c3c2b7);
+  --ink-3: light-dark(#898781, #898781);
+
+  /* lines */
+  --line: light-dark(rgb(11 11 11 / 0.1), rgb(255 255 255 / 0.1));
+  --hairline: light-dark(#e1e0d9, #2c2c2a);
+  --axis: light-dark(#c3c2b7, #383835);
+
+  /* data: spending is the accent, income its counterpart, context recedes */
+  --accent: light-dark(#2a78d6, #3987e5);
+  --accent-track: light-dark(#cde2fb, #0d366b);
+  --income: light-dark(#1baf7a, #199e70);
+  --context: #898781;
+
+  /* status — reserved for state, never used as a series colour */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --positive-ink: light-dark(#006300, #0ca30c);
+  --critical-ink: light-dark(#c03030, #e66767);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-plane: var(--plane);
+  --color-surface: var(--surface);
+  --color-popover: var(--popover);
+  --color-wash: var(--wash);
+  --color-wash-strong: var(--wash-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-hairline: var(--hairline);
+  --color-axis: var(--axis);
+  --color-accent: var(--accent);
+  --color-accent-track: var(--accent-track);
+  --color-income: var(--income);
+  --color-context: var(--context);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --color-positive: var(--positive-ink);
+  --color-critical-ink: var(--critical-ink);
+
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", monospace;
+
+  --shadow-popover: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px -4px rgb(0 0 0 / 0.14);
+}
+
+@layer base {
+  html {
+    background: var(--plane);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    /* lets dialog backdrops cover the whole visual viewport on iOS */
+    position: relative;
+    background: var(--plane);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 28%, transparent);
+  }
+
+  /* Portalled popups must stack above the app, whatever z-index it uses. */
+  .app-root {
+    isolation: isolate;
+  }
+
+  button,
+  [role="button"],
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+
+  input[type="search"]::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chevron for native <select> elements, which lose theirs with `appearance: none`.
+   Pair it with right padding (`pr-9`) so the text never runs under the chevron. */
+@utility select-chevron {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23898781' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
