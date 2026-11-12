@@ -6,8 +6,10 @@ import { useEffect } from "react";
 import { EmptyState } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useI18n } from "@/i18n/client";
 
 export default function PageError({ error, retry }: { error: unknown; retry: () => void }) {
+  const { t } = useI18n();
   useEffect(() => {
     console.error(error);
   }, [error]);
@@ -16,15 +18,14 @@ export default function PageError({ error, retry }: { error: unknown; retry: () 
     <Card>
       <EmptyState
         icon={TriangleAlert}
-        title="This page could not be shown"
+        title={t("pageError.title")}
         action={
           <Button variant="primary" onClick={() => retry()}>
-            Try again
+            {t("pageError.retry")}
           </Button>
         }
       >
-        Something failed while loading the data. Your transactions are untouched — the details are
-        in the terminal where the app is running.
+        {t("pageError.text")}
       </EmptyState>
     </Card>
   );

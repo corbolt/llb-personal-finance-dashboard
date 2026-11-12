@@ -35,3 +35,6 @@ A local, single-user personal finance app: bank exports (.xlsx) go in, a SQLite 
 - **`src/server/**` has no Next.js imports** except `db/request.ts`, so it runs in tests unchanged. Use relative imports there.
 - **Chart colours are validated**, not picked: spending is `--accent`, income `--income`, anything else is context grey. Categories are told apart by icon and name, never by colour. Changing a series colour or a surface means re-validating for colour-vision deficiency and contrast.
 - Category spending is net of refunds; transfers between own accounts and excluded bookings count nowhere (`transactions_view.flow`).
+- **Every visible text comes from a catalog.** `src/i18n/messages/en.ts` is the source; `de-LI.ts` must have the same keys and placeholders (checked by type and by `src/i18n/i18n.test.ts`). Server Components use `await getI18n()`, Client Components `useI18n()`; both give `t`, `format` (dates) and `link` (addresses carry the language: `link("/budgets")` → `/de-LI/budgets`). Never build an internal `href` by hand.
+- **`src/server/**` speaks no language.** Failures throw `UserFacingError` subclasses with an `error.*` key; actions return `{ key, params }` and the UI words it with `t.error()`. Built-in category and generated merchant names are stored in English and translated on display (`src/i18n/names.ts`) — don't change stored defaults.
+

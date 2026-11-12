@@ -52,6 +52,18 @@ describe("ingestExport", () => {
     expect(account).toEqual({ name: "LLB account", currency: "CHF" });
   });
 
+  it("names the new account the way the caller's language does", () => {
+    const result = ingestExport(db, {
+      filename: "export.xlsx",
+      data: buildExport(march),
+      accountNames: { main: "Hauptkonto", named: (sheet) => `Konto ${sheet}` },
+    });
+    expect(result.accountName).toBe("Konto LLB");
+    // an account that exists keeps its name
+    const again = ingestExport(db, { filename: "export.xlsx", data: buildExport(march) });
+    expect(again.accountName).toBe("Konto LLB");
+  });
+
   it("stores each booking with its category and effective date", () => {
     ingestExport(db, { filename: "export.xlsx", data: buildExport(march) });
     const rows = db.all<{ reference: string; date: string; merchant: string; slug: string | null; flow: string }>(
@@ -134,6 +146,10 @@ describe("ingestExport", () => {
     const savings = db.run("INSERT INTO accounts (name, currency) VALUES ('Savings', 'CHF')").lastInsertRowid;
 
     expect(() => ingestExport(db, { filename: "b.xlsx", data: buildExport(march) })).toThrow(ImportError);
+    // failures name their message instead of wording it
+    expect(() => ingestExport(db, { filename: "b.xlsx", data: buildExport(march) })).toThrow(
+      expect.objectContaining({ key: "error.chooseAccount" }),
+    );
 
     // the same references may exist in another account
     const result = ingestExport(db, { filename: "b.xlsx", data: buildExport(march), accountId: savings });
@@ -143,7 +159,7 @@ describe("ingestExport", () => {
   it("rolls back completely when the file is unusable", () => {
     expect(() =>
       ingestExport(db, { filename: "notes.txt", data: new TextEncoder().encode("hello") }),
-    ).toThrow(/No transaction table found/);
+    ).toThrow("error.noTransactionTable");
     expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM accounts")!.n).toBe(0);
   });
 });

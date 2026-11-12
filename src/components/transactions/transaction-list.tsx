@@ -8,8 +8,9 @@ import { setCategory } from "@/app/actions";
 import { CategoryIcon } from "@/components/category-icon";
 import { CategorySelect, type CategoryOption } from "@/components/category-select";
 import { FlowAmount } from "@/components/money";
+import type { Translator } from "@/i18n";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { formatDayHeading } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 
 import { TransactionSheet } from "./transaction-sheet";
@@ -35,6 +36,7 @@ export function TransactionList({
   showAccount?: boolean;
   accountNames?: Record<number, string>;
 }) {
+  const { t, format } = useI18n();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [, startTransition] = useTransition();
@@ -58,25 +60,27 @@ export function TransactionList({
       patch({ id: row.id, categoryId });
       const result = await setCategory(row.id, categoryId, scope);
       if (!result.ok) {
-        toast.error(result.error);
+        toast.error(t.error(result.error));
         return;
       }
-      const name = categoryId === null ? "Uncategorised" : (categoryById.get(categoryId)?.name ?? "");
-      const { merchant, merchantTotal, updated } = result.data;
+      const category =
+        categoryId === null ? t("common.uncategorised") : (categoryById.get(categoryId)?.name ?? "");
+      // the row's merchant name, not the result's: it is the one in the interface language
+      const { merchant } = row;
+      const { merchantTotal, updated } = result.data;
       if (scope === "merchant") {
-        toast.success(`${updated} from ${merchant} → ${name}`, {
-          description:
-            categoryId === null ? undefined : "Future imports from this merchant follow the same rule.",
+        toast.success(t("transactions.movedAll", { count: updated, merchant, category }), {
+          description: categoryId === null ? undefined : t("transactions.futureFollow"),
         });
       } else if (categoryId !== null && merchantTotal > 1) {
-        toast.success(`Moved to ${name}`, {
+        toast.success(t("transactions.movedTo", { category }), {
           action: {
-            label: `Apply to all ${merchantTotal} from ${merchant}`,
+            label: t("transactions.applyToAll", { count: merchantTotal, merchant }),
             onClick: () => changeCategory(row, categoryId, "merchant"),
           },
         });
       } else {
-        toast.success(`Moved to ${name}`);
+        toast.success(t("transactions.movedTo", { category }));
       }
     });
   }
@@ -94,9 +98,9 @@ export function TransactionList({
     <>
       <div className="divide-y divide-hairline">
         {days.map((day) => (
-          <section key={day.date} aria-label={formatDayHeading(day.date)}>
+          <section key={day.date} aria-label={format.dayHeading(day.date)}>
             <h3 className="sticky top-0 z-[1] bg-surface/95 px-5 py-2 text-xs font-medium text-ink-3 backdrop-blur">
-              {formatDayHeading(day.date, currentYear)}
+              {format.dayHeading(day.date, currentYear)}
             </h3>
             <ul>
               {day.rows.map((row) => (
@@ -114,7 +118,10 @@ export function TransactionList({
                       setSheetOpen(true);
                     }}
                     className="absolute inset-0 rounded-sm -outline-offset-2"
-                    aria-label={`Details: ${row.merchant}, ${formatMoney(row.amount, row.currency)}`}
+                    aria-label={t("transactions.details", {
+                      merchant: row.merchant,
+                      amount: formatMoney(row.amount, row.currency),
+                    })}
                   />
                   <div className="pointer-events-none flex min-w-0 items-center gap-3">
                     <CategoryIcon name={row.categoryIcon} />
@@ -123,10 +130,18 @@ export function TransactionList({
                         {row.merchant}
                       </p>
                       <p className="flex items-center gap-1.5 truncate text-[13px] text-ink-3">
-                        {row.recurringCadence ? <Repeat aria-label="Recurring" className="size-3 shrink-0" /> : null}
-                        {row.note ? <StickyNote aria-label="Has a note" className="size-3 shrink-0" /> : null}
-                        {row.excluded ? <EyeOff aria-label="Excluded" className="size-3 shrink-0" /> : null}
-                        <span className="truncate">{subline(row, showAccount ? accountNames[row.accountId] : undefined)}</span>
+                        {row.recurringCadence ? (
+                          <Repeat aria-label={t("transactions.isRecurring")} className="size-3 shrink-0" />
+                        ) : null}
+                        {row.note ? (
+                          <StickyNote aria-label={t("transactions.hasNote")} className="size-3 shrink-0" />
+                        ) : null}
+                        {row.excluded ? (
+                          <EyeOff aria-label={t("transactions.isExcluded")} className="size-3 shrink-0" />
+                        ) : null}
+                        <span className="truncate">
+                          {subline(t, row, showAccount ? accountNames[row.accountId] : undefined)}
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -136,7 +151,7 @@ export function TransactionList({
                       categories={categories}
                       value={row.categoryId}
                       onChange={(categoryId) => changeCategory(row, categoryId, "one")}
-                      label={`Category of ${row.merchant}`}
+                      label={t("transactions.categoryOf", { merchant: row.merchant })}
                     />
                   </div>
                   <div className="pointer-events-none text-right">
@@ -170,32 +185,25 @@ export function TransactionList({
   );
 }
 
-function subline(row: TransactionItem, accountName: string | undefined): string {
-  const parts = [row.memo ?? row.location ?? kindLabel(row.kind)];
+function subline(t: Translator, row: TransactionItem, accountName: string | undefined): string {
+  const parts = [row.memo ?? row.location ?? kindLabel(t, row.kind)];
   if (accountName) parts.push(accountName);
   return parts.filter(Boolean).join(" · ");
 }
 
-function kindLabel(kind: string): string {
+/** What kind of booking it is, for rows that have nothing more specific to say. */
+function kindLabel(t: Translator, kind: string): string {
   switch (kind) {
     case "card":
-      return "Card payment";
     case "payment":
-      return "Payment";
     case "credit":
-      return "Incoming payment";
     case "transfer":
-      return "Between own accounts";
     case "fee":
-      return "Bank fee";
     case "closing":
-      return "Interest and charges";
     case "standing_order":
-      return "Standing order";
     case "direct_debit":
-      return "Direct debit";
     case "cash":
-      return "Cash withdrawal";
+      return t(`bookingKind.${kind}`);
     default:
       return "";
   }

@@ -1,17 +1,15 @@
 import type { Db } from "./db/database";
 import type { CategoryKind } from "./db/default-categories";
+import { UserFacingError } from "./errors";
 import type { BookingKind } from "./import/booking-text";
 import { categorise } from "./import/categorize";
 import { loadCategoryLookup, loadUserRules } from "./import/ingest";
 import { brandForKey, type Cadence } from "./import/merchants";
 import { fold } from "./import/text";
 
-/** An error whose message is meant to be shown to the user as is. */
-export class UserError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "UserError";
-  }
+/** A change the user asked for that cannot be made, and why. */
+export class UserError extends UserFacingError {
+  override name = "UserError";
 }
 
 function requireCategory(db: Db, id: number): { id: number; name: string; kind: CategoryKind } {
@@ -19,7 +17,7 @@ function requireCategory(db: Db, id: number): { id: number; name: string; kind: 
     "SELECT id, name, kind FROM categories WHERE id = ?",
     [id],
   );
-  if (!category) throw new UserError("That category no longer exists.");
+  if (!category) throw new UserError("error.categoryGone");
   return category;
 }
 
@@ -51,7 +49,7 @@ export function setTransactionCategory(
       "SELECT merchant, merchant_key AS merchantKey FROM transactions WHERE id = ?",
       [transactionId],
     );
-    if (!tx) throw new UserError("That transaction no longer exists.");
+    if (!tx) throw new UserError("error.transactionGone");
     if (categoryId !== null) requireCategory(db, categoryId);
     const merchantTotal =
       db.get<{ n: number }>("SELECT COUNT(*) AS n FROM transactions WHERE merchant_key = ?", [
@@ -93,7 +91,7 @@ export function setMerchantCategory(db: Db, merchantKey: string, categoryId: num
     "SELECT id FROM transactions WHERE merchant_key = ? LIMIT 1",
     [merchantKey],
   );
-  if (!tx) throw new UserError("There are no transactions for that merchant.");
+  if (!tx) throw new UserError("error.merchantWithoutTransactions");
   return setTransactionCategory(db, tx.id, categoryId, "merchant");
 }
 
@@ -172,7 +170,7 @@ export function recategoriseAll(db: Db): number {
 export function createTextRule(db: Db, text: string, categoryId: number): number {
   const pattern = fold(text);
   if (pattern.length < 3) {
-    throw new UserError("Enter at least three letters or digits to match on.");
+    throw new UserError("error.ruleTooShort");
   }
   return db.transaction(() => {
     requireCategory(db, categoryId);
@@ -204,14 +202,14 @@ export interface CategoryInput {
 
 function cleanCategoryInput(input: CategoryInput): CategoryInput {
   const name = input.name.trim().replace(/\s+/g, " ");
-  if (name.length === 0) throw new UserError("Give the category a name.");
-  if (name.length > 40) throw new UserError("Category names can have up to 40 characters.");
+  if (name.length === 0) throw new UserError("error.categoryNameMissing");
+  if (name.length > 40) throw new UserError("error.categoryNameTooLong");
   return { ...input, name };
 }
 
 function rethrowDuplicateName(error: unknown, name: string): never {
   if (error instanceof Error && /UNIQUE constraint failed: categories\.name/.test(error.message)) {
-    throw new UserError(`There is already a category called “${name}”.`);
+    throw new UserError("error.categoryNameTaken", { name });
   }
   throw error;
 }
@@ -263,7 +261,7 @@ export function setBudget(db: Db, categoryId: number, amount: number | null): vo
   }
   const category = requireCategory(db, categoryId);
   if (category.kind !== "expense") {
-    throw new UserError("Budgets can only be set for spending categories.");
+    throw new UserError("error.budgetNeedsSpendingCategory");
   }
   db.run(
     `INSERT INTO budgets (category_id, amount) VALUES (?, ?)
@@ -278,7 +276,7 @@ export function setBudget(db: Db, categoryId: number, amount: number | null): vo
 
 function cleanAccountName(name: string): string {
   const cleaned = name.trim().replace(/\s+/g, " ");
-  if (cleaned.length === 0) throw new UserError("Give the account a name.");
+  if (cleaned.length === 0) throw new UserError("error.accountNameMissing");
   return cleaned.slice(0, 60);
 }
 
@@ -301,7 +299,7 @@ export function deleteEmptyAccount(db: Db, accountId: number): void {
       [accountId],
     );
     if (used && used.n > 0) {
-      throw new UserError("Remove the account's imports first — it still has transactions.");
+      throw new UserError("error.accountNotEmpty");
     }
     db.run("DELETE FROM accounts WHERE id = ?", [accountId]);
   });

@@ -1,7 +1,7 @@
 "use client";
 
 import { RotateCcw, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { createTextRule, deleteRule, reapplyRules } from "@/app/actions";
@@ -10,12 +10,13 @@ import { CategorySelect, type CategoryOption } from "@/components/category-selec
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/field";
+import { useI18n } from "@/i18n/client";
 import type { Rule } from "@/server/queries/categories";
 
-const changed = (count: number) =>
-  count === 0 ? "No transaction changed" : `${count} ${count === 1 ? "transaction" : "transactions"} recategorised`;
-
 export function RulesManager({ rules, categories }: { rules: Rule[]; categories: CategoryOption[] }) {
+  const { t } = useI18n();
+  const changed = (count: number) => (count === 0 ? t("rules.noneChanged") : t("rules.recategorised", { count }));
+  const strong = (content: ReactNode) => <span className="font-medium text-ink">{content}</span>;
   const [text, setText] = useState("");
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
@@ -25,10 +26,10 @@ export function RulesManager({ rules, categories }: { rules: Rule[]; categories:
     startTransition(async () => {
       const result = await createTextRule(text, categoryId);
       if (!result.ok) {
-        toast.error(result.error);
+        toast.error(t.error(result.error));
         return;
       }
-      toast.success("Rule added", { description: changed(result.data) });
+      toast.success(t("rules.added"), { description: changed(result.data) });
       setText("");
       setCategoryId(null);
     });
@@ -37,8 +38,8 @@ export function RulesManager({ rules, categories }: { rules: Rule[]; categories:
   function remove(rule: Rule) {
     startTransition(async () => {
       const result = await deleteRule(rule.id);
-      if (result.ok) toast.success("Rule deleted", { description: changed(result.data) });
-      else toast.error(result.error);
+      if (result.ok) toast.success(t("rules.deleted"), { description: changed(result.data) });
+      else toast.error(t.error(result.error));
     });
   }
 
@@ -46,30 +47,22 @@ export function RulesManager({ rules, categories }: { rules: Rule[]; categories:
     startTransition(async () => {
       const result = await reapplyRules();
       if (result.ok) toast.success(changed(result.data));
-      else toast.error(result.error);
+      else toast.error(t.error(result.error));
     });
   }
 
   return (
     <div>
       {rules.length === 0 ? (
-        <p className="px-5 pb-4 text-sm text-ink-2">
-          No rules yet. One is created whenever you categorise all transactions of a merchant.
-        </p>
+        <p className="px-5 pb-4 text-sm text-ink-2">{t("rules.none")}</p>
       ) : (
         <ul className="divide-y divide-hairline border-b border-hairline">
           {rules.map((rule) => (
             <li key={rule.id} className="flex items-center gap-3 px-5 py-2.5">
               <p className="min-w-0 flex-1 truncate text-sm text-ink-2">
-                {rule.matchType === "merchant" ? (
-                  <>
-                    Merchant is <span className="font-medium text-ink">{rule.merchant ?? rule.pattern}</span>
-                  </>
-                ) : (
-                  <>
-                    Statement text contains <span className="font-medium text-ink">“{rule.pattern}”</span>
-                  </>
-                )}
+                {rule.matchType === "merchant"
+                  ? t.rich("rules.merchantIs", { merchant: rule.merchant ?? rule.pattern, b: strong })
+                  : t.rich("rules.textContains", { text: rule.pattern, b: strong })}
               </p>
               <span className="flex shrink-0 items-center gap-1.5 text-sm text-ink">
                 <span aria-hidden className="text-ink-3">
@@ -86,12 +79,12 @@ export function RulesManager({ rules, categories }: { rules: Rule[]; categories:
               <ConfirmButton
                 size="sm"
                 variant="ghost"
-                confirmLabel="Delete?"
+                confirmLabel={t("common.confirmDelete")}
                 disabled={pending}
                 onConfirm={() => remove(rule)}
               >
                 <Trash2 aria-hidden className="size-3.5" />
-                <span className="sr-only">Delete rule</span>
+                <span className="sr-only">{t("rules.delete")}</span>
               </ConfirmButton>
             </li>
           ))}
@@ -106,38 +99,36 @@ export function RulesManager({ rules, categories }: { rules: Rule[]; categories:
         }}
       >
         <label className="flex min-w-48 flex-1 flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-2">When the statement text contains</span>
+          <span className="text-[13px] font-medium text-ink-2">{t("rules.when")}</span>
           <Input
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="e.g. Miete, a customer number, a name"
+            placeholder={t("rules.placeholder")}
             maxLength={80}
             className="w-full"
           />
         </label>
         <div className="flex w-56 flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-2">categorise as</span>
+          <span className="text-[13px] font-medium text-ink-2">{t("rules.categoriseAs")}</span>
           <CategorySelect
             categories={categories}
             value={categoryId}
             onChange={setCategoryId}
             allowNone={false}
-            placeholder="Choose a category"
-            label="Category for the new rule"
+            placeholder={t("common.chooseCategory")}
+            label={t("rules.categoryForNew")}
           />
         </div>
         <Button type="submit" variant="primary" disabled={pending || text.trim().length < 3 || categoryId === null}>
-          Add rule
+          {t("rules.add")}
         </Button>
       </form>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-5 py-3">
-        <p className="text-[13px] text-ink-3">
-          Rules apply to new imports and never override a category you set by hand.
-        </p>
+        <p className="text-[13px] text-ink-3">{t("rules.note")}</p>
         <Button size="sm" disabled={pending} onClick={reapply}>
           <RotateCcw aria-hidden className="size-3.5" />
-          Re-apply to all transactions
+          {t("rules.reapply")}
         </Button>
       </div>
     </div>

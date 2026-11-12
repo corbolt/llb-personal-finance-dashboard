@@ -108,12 +108,13 @@ describe("flows", () => {
       getSpendingByCategory(db, "2026-03-01", "2026-03-31").map((c) => [c.name, c.amount, c.count]),
     ).toEqual([
       ["Housing", 180000, 1],
-      ["Uncategorised", 15000, 1],
+      [null, 15000, 1], // no category: the interface names it
       ["Dining & Drinks", 8000, 1],
       ["Groceries", -1000, 2], // the refund outweighs the farm shop
     ]);
+    // the slug is what lets the interface show a built-in category in its own language
     expect(getIncomeByCategory(db, "2026-03-01", "2026-03-31")).toMatchObject([
-      { name: "Salary", amount: 500000, count: 1 },
+      { name: "Salary", slug: "salary", amount: 500000, count: 1 },
     ]);
   });
 
@@ -223,6 +224,18 @@ describe("transactions", () => {
     expect(references({ merchantKey: "coop", from: "2026-03-01" })).toEqual([208]);
   });
 
+  it("searches category names as stored, or the categories a caller matched itself", () => {
+    const groceries = [208, 205, 204, 203];
+    expect(references({ search: "groceries" })).toEqual(groceries);
+    // a caller showing "Groceries" as "Lebensmittel" resolves the name and passes the ids
+    expect(references({ search: "lebensmittel" })).toEqual([]);
+    expect(references({ search: "lebensmittel", searchCategoryIds: [categoryId("groceries")] })).toEqual(groceries);
+    // … and then the stored name no longer matches behind its back
+    expect(references({ search: "groceries", searchCategoryIds: [] })).toEqual([]);
+    // text matches still count alongside
+    expect(references({ search: "coop", searchCategoryIds: [categoryId("dining")] })).toEqual([208, 207, 204, 203]);
+  });
+
   it("pages and summarises the whole filtered set", () => {
     const page = listTransactions(db, { from: "2026-03-01" }, { limit: 2, offset: 2 });
     expect(page.rows.map((row) => Number(row.reference))).toEqual([209, 208]);
@@ -249,7 +262,7 @@ describe("categorising", () => {
     expect(change).toEqual({ updated: 1, merchant: "Hofladen Beispiel", merchantTotal: 1 });
     expect(listRules(db)).toEqual([]);
     const row = listTransactions(db, { ids: [idOf(205)] }, { limit: 1 }).rows[0];
-    expect(row).toMatchObject({ categoryName: "Dining & Drinks", categorySource: "manual" });
+    expect(row).toMatchObject({ categoryName: "Dining & Drinks", categorySlug: "dining", categorySource: "manual" });
   });
 
   it("categorises a whole merchant and remembers it for future imports", () => {
@@ -258,7 +271,7 @@ describe("categorising", () => {
     expect(change.updated).toBe(1);
     expect(countUncategorised(db)).toBe(0);
     expect(listRules(db)).toMatchObject([
-      { matchType: "merchant", pattern: "erika beispiel", merchant: "Erika Beispiel", categoryName: "Gifts & Donations", matchCount: 1 },
+      { matchType: "merchant", pattern: "erika beispiel", merchant: "Erika Beispiel", categoryName: "Gifts & Donations", categorySlug: "gifts", matchCount: 1 },
     ]);
 
     const later = ingestExport(db, {
@@ -314,7 +327,7 @@ describe("categories", () => {
     const id = createCategory(db, { name: "  Hobbies ", kind: "expense", icon: "Gift" });
     expect(listCategories(db).find((c) => c.id === id)?.name).toBe("Hobbies");
     expect(() => createCategory(db, { name: "hobbies", kind: "expense", icon: "Gift" })).toThrow(
-      /already a category/,
+      expect.objectContaining({ key: "error.categoryNameTaken", params: { name: "hobbies" } }),
     );
     expect(() => createCategory(db, { name: " ", kind: "expense", icon: "Gift" })).toThrow(UserError);
 
@@ -342,9 +355,9 @@ describe("budgets", () => {
     const overview = getBudgetOverview(db, "2026-03");
 
     // February only has data from the 25th, so it is no basis for an average
-    expect(overview.budgeted.map((l) => [l.name, l.budget, l.spent, l.average])).toEqual([
-      ["Groceries", 40000, -1000, null],
-      ["Dining & Drinks", 5000, 8000, null],
+    expect(overview.budgeted.map((l) => [l.name, l.slug, l.budget, l.spent, l.average])).toEqual([
+      ["Groceries", "groceries", 40000, -1000, null],
+      ["Dining & Drinks", "dining", 5000, 8000, null],
     ]);
     expect(overview.unbudgeted.map((l) => [l.name, l.spent, l.average])).toEqual([
       ["Housing", 180000, null],

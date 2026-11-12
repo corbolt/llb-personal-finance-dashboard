@@ -7,29 +7,37 @@ import { BudgetEditor } from "@/components/budgets/budget-editor";
 import { CategoryIcon } from "@/components/category-icon";
 import { Meter, type MeterTone } from "@/components/charts/meter";
 import { Figure, Money } from "@/components/money";
-import { EmptyState, MonthSwitcher, PageHeader, PageSkeleton } from "@/components/page";
+import { MonthSwitcher } from "@/components/month-switcher";
+import { EmptyState, PageHeader, PageSkeleton } from "@/components/page";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { formatDate, formatMonth, formatMonthName, monthEnd } from "@/lib/dates";
+import type { Translator } from "@/i18n";
+import { categoryName } from "@/i18n/names";
+import { getI18n } from "@/i18n/server";
+import { monthEnd } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { monthBounds, resolveMonth } from "@/lib/period";
-import { href, param } from "@/lib/url";
+import { param } from "@/lib/url";
 import { requestDb } from "@/server/db/request";
 import { getDataRange } from "@/server/queries/accounts";
 import { getBudgetOverview, type BudgetLine } from "@/server/queries/budgets";
 
-export const metadata: Metadata = { title: "Budgets" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return { title: t("nav.budgets") };
+}
 
 /** From this share of a budget on, the meter turns to "almost used". */
 const NEARLY_USED = 0.85;
 
-export default function BudgetsPage(props: PageProps<"/budgets">) {
+export default async function BudgetsPage(props: PageProps<"/[lang]/budgets">) {
+  const { t } = await getI18n();
   return (
     <Suspense
       fallback={
         <>
-          <PageHeader title="Budgets" />
-          <PageSkeleton />
+          <PageHeader title={t("nav.budgets")} />
+          <PageSkeleton label={t("common.loading")} />
         </>
       }
     >
@@ -44,14 +52,18 @@ interface Status {
   icon: typeof CircleCheck;
 }
 
-function statusOf(spent: number, budget: number): Status {
+function statusOf(t: Translator, spent: number, budget: number): Status {
   if (spent > budget) {
-    return { tone: "critical", label: `Over by ${formatMoney(spent - budget)}`, icon: TriangleAlert };
+    return {
+      tone: "critical",
+      label: t("budgets.over", { amount: formatMoney(spent - budget) }),
+      icon: TriangleAlert,
+    };
   }
-  const left = `${formatMoney(budget - spent)} left`;
+  const amount = formatMoney(budget - spent);
   return budget > 0 && spent / budget >= NEARLY_USED
-    ? { tone: "warning", label: `${left} · almost used`, icon: CircleAlert }
-    : { tone: "accent", label: left, icon: CircleCheck };
+    ? { tone: "warning", label: t("budgets.leftAlmostUsed", { amount }), icon: CircleAlert }
+    : { tone: "accent", label: t("budgets.left", { amount }), icon: CircleCheck };
 }
 
 /** Rounds a suggestion up to a friendly figure: 10s below 500, 50s above. */
@@ -60,26 +72,27 @@ function friendly(amount: number): number {
   return Math.ceil(amount / step) * step;
 }
 
-async function Budgets({ searchParams }: Pick<PageProps<"/budgets">, "searchParams">) {
+async function Budgets({ searchParams }: Pick<PageProps<"/[lang]/budgets">, "searchParams">) {
   const query = await searchParams;
   const db = await requestDb();
+  const { t, format, link } = await getI18n();
   const range = getDataRange(db);
 
   if (!range.firstDate || !range.lastDate || !range.coveredThrough) {
     return (
       <>
-        <PageHeader title="Budgets" />
+        <PageHeader title={t("nav.budgets")} />
         <Card>
           <EmptyState
             icon={Target}
-            title="Budgets need transactions"
+            title={t("budgets.needTransactions")}
             action={
-              <Link href="/import" className={buttonClass({ variant: "primary" })}>
-                Import a bank export
+              <Link href={link("/import")} className={buttonClass({ variant: "primary" })}>
+                {t("common.importExport")}
               </Link>
             }
           >
-            Import your transactions first; budgets are then suggested from what you usually spend.
+            {t("budgets.needTransactionsText")}
           </EmptyState>
         </Card>
       </>
@@ -89,29 +102,32 @@ async function Budgets({ searchParams }: Pick<PageProps<"/budgets">, "searchPara
   const bounds = monthBounds(range.firstDate, range.lastDate);
   const month = resolveMonth(param(query.m), bounds);
   const overview = getBudgetOverview(db, month);
+  // from here on a line's name is the one to show
+  const named = (line: BudgetLine): BudgetLine => ({ ...line, name: categoryName(t, line) });
+  const budgeted = overview.budgeted.map(named);
+  const unbudgeted = overview.unbudgeted.map(named);
   const running = range.coveredThrough < monthEnd(month);
-  const summary = statusOf(overview.spentOnBudgeted, overview.totalBudget);
+  const summary = statusOf(t, overview.spentOnBudgeted, overview.totalBudget);
   const SummaryIcon = summary.icon;
 
   return (
     <>
       <PageHeader
-        title="Budgets"
+        title={t("nav.budgets")}
         description={
           running
-            ? `${formatMonth(month)} so far — data through ${formatDate(range.coveredThrough)}`
-            : "A monthly limit per spending category"
+            ? t("budgets.soFar", { month: format.month(month), date: format.date(range.coveredThrough) })
+            : t("budgets.description")
         }
       >
         <MonthSwitcher month={month} min={bounds.min} max={bounds.max} path="/budgets" />
       </PageHeader>
 
       <div className="space-y-4">
-        {overview.budgeted.length === 0 ? (
+        {budgeted.length === 0 ? (
           <Card>
-            <EmptyState icon={Target} title="No budgets yet">
-              Pick the categories you want to keep an eye on below and give each a monthly limit.
-              The suggestions come from your own average.
+            <EmptyState icon={Target} title={t("budgets.none")}>
+              {t("budgets.noneText")}
             </EmptyState>
           </Card>
         ) : (
@@ -121,12 +137,14 @@ async function Budgets({ searchParams }: Pick<PageProps<"/budgets">, "searchPara
                 <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
                   <div>
                     <p className="text-[13px] text-ink-2">
-                      Spent in budgeted categories in {formatMonthName(month)}
+                      {t("budgets.spentIn", { month: format.monthName(month) })}
                     </p>
                     <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
                       <Figure cents={overview.spentOnBudgeted} />
                       <span className="text-sm text-ink-2">
-                        of <Money cents={overview.totalBudget} className="text-ink" /> budgeted
+                        {t.rich("budgets.ofBudgeted", {
+                          amount: <Money cents={overview.totalBudget} className="text-ink" />,
+                        })}
                       </span>
                     </p>
                   </div>
@@ -140,21 +158,25 @@ async function Budgets({ searchParams }: Pick<PageProps<"/budgets">, "searchPara
                   value={overview.spentOnBudgeted}
                   limit={overview.totalBudget}
                   tone={summary.tone}
-                  label={`All budgets: ${formatMoney(overview.spentOnBudgeted)} of ${formatMoney(overview.totalBudget)}`}
+                  label={t("budgets.allBudgets", {
+                    spent: formatMoney(overview.spentOnBudgeted),
+                    budget: formatMoney(overview.totalBudget),
+                  })}
                 />
                 {overview.totalSpent - overview.spentOnBudgeted > 0 ? (
                   <p className="mt-3 text-[13px] text-ink-3">
-                    Another <Money cents={overview.totalSpent - overview.spentOnBudgeted} /> went to
-                    categories without a budget.
+                    {t.rich("budgets.elsewhere", {
+                      amount: <Money cents={overview.totalSpent - overview.spentOnBudgeted} />,
+                    })}
                   </p>
                 ) : null}
               </CardBody>
             </Card>
 
             <Card>
-              <CardHeader title="By category" />
+              <CardHeader title={t("common.byCategory")} />
               <ul className="divide-y divide-hairline pb-1">
-                {overview.budgeted.map((line) => (
+                {budgeted.map((line) => (
                   <li key={line.categoryId}>
                     <BudgetRow line={line} month={month} />
                   </li>
@@ -164,31 +186,27 @@ async function Budgets({ searchParams }: Pick<PageProps<"/budgets">, "searchPara
           </>
         )}
 
-        {overview.unbudgeted.length > 0 ? (
+        {unbudgeted.length > 0 ? (
           <Card>
-            <CardHeader
-              title="Without a budget"
-              description="Categories you spend in — the suggested limit is your recent monthly average, rounded up"
-            />
+            <CardHeader title={t("budgets.without")} description={t("budgets.withoutDescription")} />
             <ul className="divide-y divide-hairline pb-1">
-              {overview.unbudgeted.map((line) => (
+              {unbudgeted.map((line) => (
                 <li key={line.categoryId} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-2.5">
                   <CategoryIcon name={line.icon} />
                   <div className="min-w-0 flex-1">
                     <Link
-                      href={href("/transactions", { m: month, category: line.categoryId })}
+                      href={link("/transactions", { m: month, category: line.categoryId })}
                       className="truncate text-sm font-medium text-ink hover:underline"
                     >
                       {line.name}
                     </Link>
                     <p className="text-[13px] text-ink-3 tabular">
-                      <Money cents={line.spent} /> this month
-                      {line.average !== null ? (
-                        <>
-                          {" "}
-                          · <Money cents={line.average} /> on average
-                        </>
-                      ) : null}
+                      {line.average !== null
+                        ? t.rich("budgets.thisMonthAverage", {
+                            amount: <Money cents={line.spent} />,
+                            average: <Money cents={line.average} />,
+                          })
+                        : t.rich("budgets.thisMonth", { amount: <Money cents={line.spent} /> })}
                     </p>
                   </div>
                   <BudgetEditor
@@ -207,9 +225,11 @@ async function Budgets({ searchParams }: Pick<PageProps<"/budgets">, "searchPara
   );
 }
 
-function BudgetRow({ line, month }: { line: BudgetLine; month: string }) {
+/** One budgeted category; `line.name` is already the name to show. */
+async function BudgetRow({ line, month }: { line: BudgetLine; month: string }) {
+  const { t, link } = await getI18n();
   const budget = line.budget ?? 0;
-  const status = statusOf(line.spent, budget);
+  const status = statusOf(t, line.spent, budget);
   const Icon = status.icon;
   return (
     <div className="px-5 py-3.5">
@@ -217,13 +237,16 @@ function BudgetRow({ line, month }: { line: BudgetLine; month: string }) {
         <CategoryIcon name={line.icon} />
         <div className="min-w-0 flex-1">
           <Link
-            href={href("/transactions", { m: month, category: line.categoryId })}
+            href={link("/transactions", { m: month, category: line.categoryId })}
             className="truncate text-sm font-medium text-ink hover:underline"
           >
             {line.name}
           </Link>
           <p className="text-[13px] text-ink-2 tabular">
-            <Money cents={line.spent} className="text-ink" /> of <Money cents={budget} />
+            {t.rich("budgets.spentOf", {
+              spent: <Money cents={line.spent} className="text-ink" />,
+              budget: <Money cents={budget} />,
+            })}
           </p>
         </div>
         <BudgetEditor categoryId={line.categoryId} categoryName={line.name} budget={line.budget} />
@@ -233,7 +256,11 @@ function BudgetRow({ line, month }: { line: BudgetLine; month: string }) {
         value={line.spent}
         limit={budget}
         tone={status.tone}
-        label={`${line.name}: ${formatMoney(line.spent)} of ${formatMoney(budget)}`}
+        label={t("budgets.meter", {
+          category: line.name,
+          spent: formatMoney(line.spent),
+          budget: formatMoney(budget),
+        })}
       />
       <p className="mt-2 flex items-center gap-1.5 text-[13px] text-ink-2">
         <Icon aria-hidden className="size-3.5" />

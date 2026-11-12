@@ -6,8 +6,8 @@ import { useEffect, useRef, useState, useTransition, type ReactNode } from "reac
 
 import type { CategoryOption } from "@/components/category-select";
 import { Input, NativeSelect } from "@/components/ui/field";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { href } from "@/lib/url";
 
 export interface FilterValues {
   q: string;
@@ -18,6 +18,8 @@ export interface FilterValues {
 }
 
 const SEARCH_DELAY_MS = 250;
+
+const KINDS: Array<CategoryOption["kind"]> = ["expense", "income", "transfer"];
 
 /**
  * Filter bar for the transaction list. The filters live in the URL, so a
@@ -40,6 +42,7 @@ export function TransactionFilters({
   accounts: Array<{ id: number; name: string }>;
   children: ReactNode;
 }) {
+  const { t, link } = useI18n();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [text, setText] = useState(values.q);
@@ -52,7 +55,7 @@ export function TransactionFilters({
     const next = { ...latest.current, ...change };
     latest.current = next;
     startTransition(() => {
-      router.replace(href("/transactions", { ...preserved, ...next }), { scroll: false });
+      router.replace(link("/transactions", { ...preserved, ...next }), { scroll: false });
     });
   }
 
@@ -65,12 +68,6 @@ export function TransactionFilters({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
-  const groups: Array<{ label: string; kind: CategoryOption["kind"] }> = [
-    { label: "Spending", kind: "expense" },
-    { label: "Income", kind: "income" },
-    { label: "Transfers", kind: "transfer" },
-  ];
-
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -80,8 +77,8 @@ export function TransactionFilters({
             type="search"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Search merchant, purpose, note or amount"
-            aria-label="Search transactions"
+            placeholder={t("transactions.searchPlaceholder")}
+            aria-label={t("transactions.search")}
             className="w-full pr-9 pl-9"
           />
           {pending ? (
@@ -90,7 +87,7 @@ export function TransactionFilters({
             <button
               type="button"
               onClick={() => setText("")}
-              aria-label="Clear search"
+              aria-label={t("transactions.clearSearch")}
               className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-ink-3 hover:bg-wash hover:text-ink"
             >
               <X aria-hidden className="size-3.5" />
@@ -98,8 +95,13 @@ export function TransactionFilters({
           ) : null}
         </div>
 
-        <NativeSelect className="shrink-0" aria-label="Period" value={values.m} onChange={(event) => apply({ m: event.target.value })}>
-          <option value="">All time</option>
+        <NativeSelect
+          className="shrink-0"
+          aria-label={t("common.period")}
+          value={values.m}
+          onChange={(event) => apply({ m: event.target.value })}
+        >
+          <option value="">{t("transactions.allTime")}</option>
           {months.map((month) => (
             <option key={month.value} value={month.value}>
               {month.label}
@@ -109,16 +111,16 @@ export function TransactionFilters({
 
         <NativeSelect
           className="max-w-56 shrink-0"
-          aria-label="Category"
+          aria-label={t("common.category")}
           value={values.category}
           onChange={(event) => apply({ category: event.target.value })}
         >
-          <option value="">All categories</option>
-          <option value="none">Uncategorised</option>
-          {groups.map((group) => (
-            <optgroup key={group.kind} label={group.label}>
+          <option value="">{t("transactions.allCategories")}</option>
+          <option value="none">{t("common.uncategorised")}</option>
+          {KINDS.map((kind) => (
+            <optgroup key={kind} label={t(`flow.${kind}`)}>
               {categories
-                .filter((category) => category.kind === group.kind)
+                .filter((category) => category.kind === kind)
                 .map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -128,21 +130,28 @@ export function TransactionFilters({
           ))}
         </NativeSelect>
 
-        <NativeSelect className="shrink-0" aria-label="Type" value={values.flow} onChange={(event) => apply({ flow: event.target.value })}>
-          <option value="">All types</option>
-          <option value="expense">Spending</option>
-          <option value="income">Income</option>
-          <option value="transfer">Transfers</option>
+        <NativeSelect
+          className="shrink-0"
+          aria-label={t("transactions.type")}
+          value={values.flow}
+          onChange={(event) => apply({ flow: event.target.value })}
+        >
+          <option value="">{t("transactions.allTypes")}</option>
+          {KINDS.map((kind) => (
+            <option key={kind} value={kind}>
+              {t(`flow.${kind}`)}
+            </option>
+          ))}
         </NativeSelect>
 
         {accounts.length > 1 ? (
           <NativeSelect
             className="max-w-48 shrink-0"
-            aria-label="Account"
+            aria-label={t("common.account")}
             value={values.account}
             onChange={(event) => apply({ account: event.target.value })}
           >
-            <option value="">All accounts</option>
+            <option value="">{t("transactions.allAccounts")}</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}

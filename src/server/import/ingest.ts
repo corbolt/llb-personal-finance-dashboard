@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { Db } from "../db/database";
+import { UserFacingError } from "../errors";
 import { categorise, type CategoryLookup, type UserRule } from "./categorize";
 import {
   mergeOrder,
@@ -11,12 +12,29 @@ import {
 } from "./order";
 import { parseExport, type ParsedTransaction, type SkippedRow } from "./parse";
 
+/** What to call the account that the first import creates. */
+export interface AccountNames {
+  main: string;
+  /** For an export whose sheet has a name of its own. */
+  named: (sheetName: string) => string;
+}
+
 export interface IngestInput {
   filename: string;
   data: Uint8Array;
   /** Target account; may be omitted while there is at most one account. */
   accountId?: number;
+  /**
+   * Names in the user's language for a newly created account. The name is
+   * stored and from then on the user's to change, so it is chosen once, here.
+   */
+  accountNames?: AccountNames;
 }
+
+const ENGLISH_ACCOUNT_NAMES: AccountNames = {
+  main: "Main account",
+  named: (sheetName) => `${sheetName} account`,
+};
 
 export interface IngestResult {
   accountId: number;
@@ -37,11 +55,9 @@ export interface IngestResult {
   fileOrder: FileOrder;
 }
 
-export class ImportError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ImportError";
-  }
+/** The export is readable but cannot be imported as asked. */
+export class ImportError extends UserFacingError {
+  override name = "ImportError";
 }
 
 interface StoredRow extends ExistingBooking {
@@ -55,24 +71,26 @@ function resolveAccount(
   accountId: number | undefined,
   sheetName: string,
   currency: string,
+  names: AccountNames,
 ): { id: number; name: string } {
   if (accountId !== undefined) {
     const account = db.get<{ id: number; name: string }>(
       "SELECT id, name FROM accounts WHERE id = ?",
       [accountId],
     );
-    if (!account) throw new ImportError("The selected account no longer exists.");
+    if (!account) throw new ImportError("error.accountGone");
     return account;
   }
 
   const accounts = db.all<{ id: number; name: string }>("SELECT id, name FROM accounts ORDER BY id");
   if (accounts.length === 1) return accounts[0];
   if (accounts.length > 1) {
-    throw new ImportError("Choose which account this export belongs to.");
+    throw new ImportError("error.chooseAccount");
   }
 
-  const generic = /^(sheet|tabelle|feuil|foglio)\s*\d*$/i.test(sheetName.trim());
-  const name = generic || sheetName.trim() === "" ? "Main account" : `${sheetName.trim()} account`;
+  const sheet = sheetName.trim();
+  const generic = sheet === "" || /^(sheet|tabelle|feuil|foglio)\s*\d*$/i.test(sheet);
+  const name = generic ? names.main : names.named(sheet);
   const created = db.run("INSERT INTO accounts (name, currency) VALUES (?, ?)", [name, currency]);
   return { id: created.lastInsertRowid, name };
 }
@@ -105,7 +123,13 @@ export function ingestExport(db: Db, input: IngestInput): IngestResult {
   const dateTo = bookedDays[bookedDays.length - 1] ?? null;
 
   return db.transaction(() => {
-    const account = resolveAccount(db, input.accountId, parsed.sheetName, parsed.currency);
+    const account = resolveAccount(
+      db,
+      input.accountId,
+      parsed.sheetName,
+      parsed.currency,
+      input.accountNames ?? ENGLISH_ACCOUNT_NAMES,
+    );
 
     const stored = db.all<StoredRow>(
       `SELECT id, reference, fingerprint, seq, substr(booked_at, 1, 10) AS bookedDay,

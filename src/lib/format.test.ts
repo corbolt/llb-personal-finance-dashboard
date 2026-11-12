@@ -6,16 +6,11 @@ import {
   addMonthsToDate,
   daysInMonth,
   diffDays,
-  formatDate,
-  formatDayHeading,
-  formatDayMonth,
-  formatMonth,
-  formatMonthShort,
-  formatRelativeDay,
   isIsoDate,
   isIsoMonth,
   monthEnd,
   monthRange,
+  weekdayOf,
 } from "./dates";
 import { formatAmount, formatAxisValue, formatMoney, parseMoneyInput, splitAmount, toCents } from "./money";
 import { resolveMonth } from "./period";
@@ -45,11 +40,13 @@ describe("money", () => {
   });
 
   it("labels axes in full below ten thousand and compactly above", () => {
-    expect(formatAxisValue(2500, 5000)).toBe("2’500");
-    expect(formatAxisValue(0, 12500)).toBe("0");
-    expect(formatAxisValue(7500, 12500)).toBe("7.5K");
-    expect(formatAxisValue(-2500, 10000)).toBe("−2.5K");
-    expect(formatAxisValue(1500000, 2000000)).toBe("1.5M");
+    // the units are the interface language's; see src/i18n/i18n.test.ts
+    const compact = { thousands: (value: string) => `${value}k`, millions: (value: string) => `${value}m` };
+    expect(formatAxisValue(2500, 5000, compact)).toBe("2’500");
+    expect(formatAxisValue(0, 12500, compact)).toBe("0");
+    expect(formatAxisValue(7500, 12500, compact)).toBe("7.5k");
+    expect(formatAxisValue(-2500, 10000, compact)).toBe("−2.5k");
+    expect(formatAxisValue(1500000, 2000000, compact)).toBe("1.5m");
   });
 
   it("parses amounts the way people type them", () => {
@@ -87,20 +84,10 @@ describe("dates", () => {
     expect(monthRange("2026-11", "2027-02")).toEqual(["2026-11", "2026-12", "2027-01", "2027-02"]);
   });
 
-  it("formats with fixed English names", () => {
-    expect(formatDate("2026-09-29")).toBe("29 Sep 2026");
-    expect(formatDayMonth("2026-11-01")).toBe("1 Nov");
-    expect(formatDayHeading("2026-11-10")).toBe("Tue 10 Nov");
-    expect(formatDayHeading("2025-12-31", "2026")).toBe("Wed 31 Dec 2025");
-    expect(formatMonth("2026-11")).toBe("November 2026");
-    expect(formatMonthShort("2026-01", true)).toBe("Jan 26");
-  });
-
-  it("describes days relative to today", () => {
-    expect(formatRelativeDay("2026-11-11", "2026-11-11")).toBe("today");
-    expect(formatRelativeDay("2026-11-12", "2026-11-11")).toBe("tomorrow");
-    expect(formatRelativeDay("2026-11-15", "2026-11-11")).toBe("in 4 days");
-    expect(formatRelativeDay("2026-11-08", "2026-11-11")).toBe("3 days ago");
+  it("knows the day of the week", () => {
+    expect(weekdayOf("2026-11-08")).toBe(0); // a Sunday
+    expect(weekdayOf("2026-11-10")).toBe(2);
+    expect(weekdayOf("2025-12-31")).toBe(3);
   });
 });
 

@@ -82,9 +82,11 @@ export function getDailySpending(db: Db, month: IsoMonth): number[] {
 }
 
 export interface CategoryAmount {
-  /** `null` for bookings without a category. */
+  /** `null` for bookings without a category — as are then `name` and `slug`. */
   categoryId: number | null;
-  name: string;
+  /** The stored name; `categoryName()` in `src/i18n/names.ts` turns it into the one to show. */
+  name: string | null;
+  slug: string | null;
   icon: string;
   amount: number;
   count: number;
@@ -100,7 +102,8 @@ function byCategory(
   return db.all<CategoryAmount>(
     `SELECT
        category_id AS categoryId,
-       COALESCE(category_name, 'Uncategorised') AS name,
+       category_name AS name,
+       category_slug AS slug,
        COALESCE(category_icon, 'CircleDashed') AS icon,
        ${sign}SUM(amount) AS amount,
        COUNT(*) AS count

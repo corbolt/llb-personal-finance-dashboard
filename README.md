@@ -32,7 +32,8 @@ npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:3000> and drop your export onto the page.
+Open <http://127.0.0.1:3000> and drop your export onto the page. The language follows your browser
+(English or German); switch it in the sidebar — every address starts with it, e.g. `/de-LI/budgets`.
 
 For everyday use the production build starts faster and feels snappier:
 
@@ -150,6 +151,7 @@ DATABASE_PATH=/tmp/scratch.db npm run dev
 src/
   app/                 pages, layout, Server Actions (actions.ts)
   components/          UI; charts/ holds the chart kit
+  i18n/                languages: catalogs (messages/), translator, date formatting
   lib/                 money, dates and URL helpers shared by server and client
   proxy.ts             localhost-only guard
   server/
@@ -172,5 +174,5 @@ src/
   have not been seen in real data yet.
 - One currency per account. Foreign-currency purchases show the original amount
   but are counted in the account's currency, as booked by the bank.
-- The interface is in English; amounts and dates use Swiss conventions.
-- The name and tagline live in `src/lib/site.ts`.
+- The interface is in English and in German as written in Liechtenstein; amounts use Swiss conventions in both.
+- The name lives in `src/lib/site.ts`, the tagline with all other texts in `src/i18n/messages/`.

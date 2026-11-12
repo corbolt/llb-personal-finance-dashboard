@@ -9,8 +9,9 @@ import { toast } from "sonner";
 import { importExports, type ImportedFile, type ImportState } from "@/app/actions";
 import { buttonClass } from "@/components/ui/button";
 import { Label, NativeSelect } from "@/components/ui/field";
+import type { I18n } from "@/i18n";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { formatDate } from "@/lib/dates";
 
 /**
  * Upload area for bank exports. Files are imported as soon as they are
@@ -24,12 +25,14 @@ export function ImportForm({
   /** Smaller drop area, for use inside other pages. */
   compact?: boolean;
 }) {
+  const i18n = useI18n();
+  const { t, locale } = i18n;
   const router = useRouter();
   const [state, action, pending] = useActionState<ImportState, FormData>(async (previous, formData) => {
     const next = await importExports(previous, formData);
     // On the welcome screen a successful import replaces this form with the
     // dashboard, so the outcome is announced where it survives that.
-    if (compact && next) announce(next.files, (path) => router.push(path));
+    if (compact && next) announce(next.files, i18n, (path) => router.push(path));
     return next;
   }, null);
   const [dragging, setDragging] = useState(false);
@@ -47,9 +50,11 @@ export function ImportForm({
   return (
     <div className="space-y-3">
       <form ref={form} action={action} className="space-y-3">
+        {/* the first import names the account it creates — in this language */}
+        <input type="hidden" name="locale" value={locale} />
         {accounts.length > 1 ? (
           <div className="flex items-center gap-3">
-            <Label htmlFor="import-account">Import into</Label>
+            <Label htmlFor="import-account">{t("import.into")}</Label>
             <NativeSelect id="import-account" name="accountId" defaultValue={accounts[0].id}>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
@@ -82,11 +87,12 @@ export function ImportForm({
             )}
           </span>
           <span className="mt-4 text-sm font-medium text-ink">
-            {pending ? "Importing…" : "Drop your bank export here"}
+            {pending ? t("import.importing") : t("import.drop")}
           </span>
           <span className="mt-1 text-[13px] text-ink-2">
-            or <span className="text-accent underline-offset-2 hover:underline">choose a file</span> —
-            .xlsx from your online banking, several at once is fine
+            {t.rich("import.dropHint", {
+              link: (content) => <span className="text-accent underline-offset-2 hover:underline">{content}</span>,
+            })}
           </span>
           <input
             ref={input}
@@ -115,24 +121,24 @@ export function ImportForm({
 }
 
 /** Summarises an import as toasts. */
-function announce(files: ImportedFile[], navigate: (path: string) => void) {
+function announce(files: ImportedFile[], { t, link }: I18n, navigate: (path: string) => void) {
   for (const file of files) {
     const { result } = file;
     if (!result) {
-      toast.error(file.filename ? `${file.filename} could not be imported` : "Nothing imported", {
-        description: file.error,
+      toast.error(file.filename ? t("import.failed", { filename: file.filename }) : t("import.nothingImported"), {
+        description: file.error ? t.error(file.error) : undefined,
       });
     } else if (result.inserted === 0) {
-      toast(`Nothing new in ${file.filename}`, {
-        description: `All ${result.rowCount} transactions were already imported.`,
+      toast(t("import.nothingNewIn", { filename: file.filename }), {
+        description: t("import.allKnown", { count: result.rowCount }),
       });
     } else {
       toast.success(
-        `${result.inserted} ${result.inserted === 1 ? "transaction" : "transactions"} imported`,
+        t("import.imported", { count: result.inserted }),
         result.uncategorised > 0
           ? {
-              description: `${result.uncategorised} of them still need a category.`,
-              action: { label: "Review", onClick: () => navigate("/categories#review") },
+              description: t("import.needCategory", { count: result.uncategorised }),
+              action: { label: t("import.review"), onClick: () => navigate(link("/categories#review")) },
               duration: 12_000,
             }
           : undefined,
@@ -142,6 +148,7 @@ function announce(files: ImportedFile[], navigate: (path: string) => void) {
 }
 
 function FileResult({ file }: { file: ImportedFile }) {
+  const { t, format, link } = useI18n();
   const { result } = file;
 
   if (!result) {
@@ -150,13 +157,24 @@ function FileResult({ file }: { file: ImportedFile }) {
         <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-critical-ink" />
         <div className="min-w-0 text-sm">
           {file.filename ? <p className="truncate font-medium text-ink">{file.filename}</p> : null}
-          <p className="text-ink-2">{file.error}</p>
+          <p className="text-ink-2">{file.error ? t.error(file.error) : null}</p>
         </div>
       </li>
     );
   }
 
   const nothingNew = result.inserted === 0;
+  // "12 new transactions added to Main account, 3 already there · 1 Oct 2026 – 31 Oct 2026"
+  const added = [
+    t("import.added", { count: result.inserted, account: result.accountName }),
+    result.duplicates > 0 ? t("import.alreadyThere", { count: result.duplicates }) : null,
+  ];
+  const summary = [
+    added.filter(Boolean).join(", "),
+    result.dateFrom && result.dateTo ? `${format.date(result.dateFrom)} – ${format.date(result.dateTo)}` : null,
+  ];
+  const skippedRows = result.skipped.slice(0, 5).map((row) => row.rowNumber);
+
   return (
     <li className="flex items-start gap-3 rounded-xl border border-line bg-surface px-4 py-3">
       {nothingNew ? (
@@ -167,44 +185,31 @@ function FileResult({ file }: { file: ImportedFile }) {
       <div className="min-w-0 flex-1 text-sm">
         <p className="truncate font-medium text-ink">{file.filename}</p>
         <p className="text-ink-2">
-          {nothingNew
-            ? `Nothing new — all ${result.rowCount} transactions were already imported.`
-            : `${result.inserted} new ${result.inserted === 1 ? "transaction" : "transactions"} added to ${result.accountName}`}
-          {!nothingNew && result.duplicates > 0 ? `, ${result.duplicates} already there` : ""}
-          {!nothingNew && result.dateFrom && result.dateTo
-            ? ` · ${formatDate(result.dateFrom)} – ${formatDate(result.dateTo)}`
-            : ""}
+          {nothingNew ? t("import.nothingNew", { count: result.rowCount }) : summary.filter(Boolean).join(" · ")}
         </p>
         {result.planned > 0 ? (
-          <p className="text-[13px] text-ink-3">
-            {result.planned} planned (not yet booked) {result.planned === 1 ? "entry was" : "entries were"} left out.
-          </p>
+          <p className="text-[13px] text-ink-3">{t("import.plannedLeftOut", { count: result.planned })}</p>
         ) : null}
         {result.skipped.length > 0 ? (
           <p className="text-[13px] text-ink-3">
-            {result.skipped.length} {result.skipped.length === 1 ? "row" : "rows"} could not be read (row{" "}
-            {result.skipped
-              .slice(0, 5)
-              .map((row) => row.rowNumber)
-              .join(", ")}
-            {result.skipped.length > 5 ? ", …" : ""}).
+            {t("import.skippedRows", {
+              count: result.skipped.length,
+              rows: `${skippedRows.join(", ")}${result.skipped.length > 5 ? ", …" : ""}`,
+            })}
           </p>
         ) : null}
         {result.fileOrder === "unverified" && !nothingNew ? (
-          <p className="text-[13px] text-ink-3">
-            The running balance in this file does not add up row by row — it may be filtered or sorted
-            differently. Balances shown for this period can be off.
-          </p>
+          <p className="text-[13px] text-ink-3">{t("import.unverifiedOrder")}</p>
         ) : null}
         {!nothingNew ? (
           <div className="mt-2.5 flex flex-wrap gap-2">
             {result.uncategorised > 0 ? (
-              <Link href="/categories#review" className={buttonClass({ variant: "primary", size: "sm" })}>
-                Review {result.uncategorised} uncategorised
+              <Link href={link("/categories#review")} className={buttonClass({ variant: "primary", size: "sm" })}>
+                {t("import.reviewUncategorised", { count: result.uncategorised })}
               </Link>
             ) : null}
-            <Link href="/transactions" className={buttonClass({ size: "sm" })}>
-              View transactions
+            <Link href={link("/transactions")} className={buttonClass({ size: "sm" })}>
+              {t("import.viewTransactions")}
             </Link>
           </div>
         ) : null}

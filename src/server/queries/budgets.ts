@@ -6,6 +6,7 @@ import { getAverageSpendingByCategory } from "./flows";
 export interface BudgetLine {
   categoryId: number;
   name: string;
+  slug: string | null;
   icon: string;
   /** Monthly budget, or `null` if none is set. */
   budget: number | null;
@@ -40,12 +41,13 @@ export function getBudgetOverview(db: Db, month: IsoMonth): BudgetOverview {
   const rows = db.all<{
     categoryId: number;
     name: string;
+    slug: string | null;
     icon: string;
     budget: number | null;
     spent: number | null;
   }>(
     `SELECT
-       c.id AS categoryId, c.name, c.icon, b.amount AS budget,
+       c.id AS categoryId, c.name, c.slug, c.icon, b.amount AS budget,
        (SELECT -SUM(t.amount) FROM transactions t
         WHERE t.category_id = c.id AND t.excluded = 0 AND t.date BETWEEN :from AND :to) AS spent
      FROM categories c
@@ -58,6 +60,7 @@ export function getBudgetOverview(db: Db, month: IsoMonth): BudgetOverview {
   const lines: BudgetLine[] = rows.map((row) => ({
     categoryId: row.categoryId,
     name: row.name,
+    slug: row.slug,
     icon: row.icon,
     budget: row.budget,
     spent: row.spent ?? 0,

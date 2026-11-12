@@ -1,10 +1,12 @@
-import { ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
-import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
-import { addMonths, formatMonth, type IsoMonth } from "@/lib/dates";
-import { href, type QueryValue } from "@/lib/url";
+
+/*
+ * Building blocks of a page. They take their texts as props, so Server and
+ * Client Components can both use them.
+ */
 
 export function PageHeader({
   title,
@@ -24,64 +26,6 @@ export function PageHeader({
       </div>
       {children ? <div className="flex flex-wrap items-center gap-2">{children}</div> : null}
     </header>
-  );
-}
-
-/** Steps through months; the range is limited to months that have data. */
-export function MonthSwitcher({
-  month,
-  min,
-  max,
-  path,
-  query = {},
-}: {
-  month: IsoMonth;
-  min: IsoMonth;
-  max: IsoMonth;
-  path: string;
-  /** Other search params to keep when switching. */
-  query?: Record<string, QueryValue>;
-}) {
-  const previous = addMonths(month, -1);
-  const next = addMonths(month, 1);
-  const arrow =
-    "grid size-9 place-items-center text-ink-2 transition-colors hover:bg-wash hover:text-ink";
-  const disabled = "grid size-9 place-items-center text-ink-3/50";
-
-  return (
-    <div className="inline-flex items-center overflow-hidden rounded-lg border border-line bg-surface">
-      {previous >= min ? (
-        <Link
-          href={href(path, { ...query, m: previous })}
-          scroll={false}
-          aria-label={`Previous month, ${formatMonth(previous)}`}
-          className={arrow}
-        >
-          <ChevronLeft aria-hidden className="size-4" />
-        </Link>
-      ) : (
-        <span className={disabled}>
-          <ChevronLeft aria-hidden className="size-4" />
-        </span>
-      )}
-      <span className="min-w-[8.5rem] px-1 text-center text-sm font-medium text-ink">
-        {formatMonth(month)}
-      </span>
-      {next <= max ? (
-        <Link
-          href={href(path, { ...query, m: next })}
-          scroll={false}
-          aria-label={`Next month, ${formatMonth(next)}`}
-          className={arrow}
-        >
-          <ChevronRight aria-hidden className="size-4" />
-        </Link>
-      ) : (
-        <span className={disabled}>
-          <ChevronRight aria-hidden className="size-4" />
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -115,9 +59,16 @@ function Block({ className }: { className?: string }) {
 }
 
 /** Placeholder shown in the static shell while a page's data loads. */
-export function PageSkeleton({ rows = 2 }: { rows?: number }) {
+export function PageSkeleton({
+  label,
+  rows = 2,
+}: {
+  /** What a screen reader announces meanwhile, e.g. "Loading". */
+  label: string;
+  rows?: number;
+}) {
   return (
-    <div aria-busy="true" aria-label="Loading" className="space-y-4">
+    <div aria-busy="true" aria-label={label} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-3">
         <Block className="h-24" />
         <Block className="h-24" />

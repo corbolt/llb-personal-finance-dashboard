@@ -3,10 +3,11 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
+import { useI18n } from "@/i18n/client";
+
 type Theme = "system" | "light" | "dark";
 
 const ORDER: Theme[] = ["system", "light", "dark"];
-const LABEL: Record<Theme, string> = { system: "System", light: "Light", dark: "Dark" };
 const ICON = { system: Monitor, light: Sun, dark: Moon };
 
 const listeners = new Set<() => void>();
@@ -46,20 +47,24 @@ export function ThemeToggle() {
   // the server cannot know the stored choice; it renders "system" and the
   // client corrects the label after hydration
   const theme = useSyncExternalStore<Theme>(subscribe, readTheme, () => "system");
+  const { t } = useI18n();
   const Icon = ICON[theme];
   const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length];
+  const label = t(`theme.${theme}`);
 
   return (
     <button
       type="button"
       onClick={() => applyTheme(next)}
-      title={`Theme: ${LABEL[theme]} — switch to ${LABEL[next].toLowerCase()}`}
+      title={t(`theme.switch.${next}`, { theme: label })}
       className="flex h-8 items-center gap-2 rounded-lg px-2.5 text-[13px] text-ink-2 transition-colors hover:bg-wash hover:text-ink"
     >
       <Icon aria-hidden className="size-4" strokeWidth={1.75} />
       <span>
-        <span className="sr-only">Theme: </span>
-        {LABEL[theme]}
+        {t.rich("theme.current", {
+          theme: label,
+          label: (content) => <span className="sr-only">{content}</span>,
+        })}
       </span>
     </button>
   );

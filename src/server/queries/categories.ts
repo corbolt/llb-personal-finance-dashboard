@@ -42,6 +42,7 @@ export interface Rule {
   merchant: string | null;
   categoryId: number;
   categoryName: string;
+  categorySlug: string | null;
   categoryIcon: string;
   /** Bookings of the merchant this rule categorises; `null` for text rules. */
   matchCount: number | null;
@@ -54,7 +55,8 @@ export function listRules(db: Db): Rule[] {
        CASE WHEN r.match_type = 'merchant' THEN
          (SELECT MAX(t.merchant) FROM transactions t WHERE t.merchant_key = r.pattern)
        END AS merchant,
-       r.category_id AS categoryId, c.name AS categoryName, c.icon AS categoryIcon,
+       r.category_id AS categoryId, c.name AS categoryName, c.slug AS categorySlug,
+       c.icon AS categoryIcon,
        CASE WHEN r.match_type = 'merchant' THEN
          (SELECT COUNT(*) FROM transactions t WHERE t.merchant_key = r.pattern)
        END AS matchCount

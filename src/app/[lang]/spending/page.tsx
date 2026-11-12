@@ -9,19 +9,19 @@ import { ColumnChart } from "@/components/charts/column-chart";
 import { DataTable } from "@/components/charts/data-table";
 import { RankedBars } from "@/components/charts/ranked-bars";
 import { Figure, Money } from "@/components/money";
-import { EmptyState, MonthSwitcher, PageHeader, PageSkeleton, StatTile } from "@/components/page";
+import { MonthSwitcher } from "@/components/month-switcher";
+import { EmptyState, PageHeader, PageSkeleton, StatTile } from "@/components/page";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import type { MessageKey } from "@/i18n/messages";
+import { categoryName, merchantName } from "@/i18n/names";
+import { getI18n } from "@/i18n/server";
 import { cn } from "@/lib/cn";
 import {
   addMonths,
   dayOfMonth,
   daysInMonth,
   diffDays,
-  formatDate,
-  formatDayMonth,
-  formatMonth,
-  formatMonthShort,
   monthEnd,
   monthOf,
   monthStart,
@@ -29,7 +29,7 @@ import {
   type IsoMonth,
 } from "@/lib/dates";
 import { monthBounds, resolveMonth } from "@/lib/period";
-import { href, param } from "@/lib/url";
+import { param } from "@/lib/url";
 import { requestDb } from "@/server/db/request";
 import { getDataRange } from "@/server/queries/accounts";
 import {
@@ -41,25 +41,29 @@ import {
   getTotals,
 } from "@/server/queries/flows";
 
-export const metadata: Metadata = { title: "Spending" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return { title: t("nav.spending") };
+}
 
 type RangeKey = "month" | "3m" | "6m" | "12m" | "all";
 
-const RANGES: Array<{ key: RangeKey; label: string }> = [
-  { key: "month", label: "Month" },
-  { key: "3m", label: "3 months" },
-  { key: "6m", label: "6 months" },
-  { key: "12m", label: "12 months" },
-  { key: "all", label: "All" },
+const RANGES: Array<{ key: RangeKey; label: MessageKey & `spending.range.${RangeKey}` }> = [
+  { key: "month", label: "spending.range.month" },
+  { key: "3m", label: "spending.range.3m" },
+  { key: "6m", label: "spending.range.6m" },
+  { key: "12m", label: "spending.range.12m" },
+  { key: "all", label: "spending.range.all" },
 ];
 
-export default function SpendingPage(props: PageProps<"/spending">) {
+export default async function SpendingPage(props: PageProps<"/[lang]/spending">) {
+  const { t } = await getI18n();
   return (
     <Suspense
       fallback={
         <>
-          <PageHeader title="Spending" />
-          <PageSkeleton />
+          <PageHeader title={t("nav.spending")} />
+          <PageSkeleton label={t("common.loading")} />
         </>
       }
     >
@@ -68,26 +72,27 @@ export default function SpendingPage(props: PageProps<"/spending">) {
   );
 }
 
-async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchParams">) {
+async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "searchParams">) {
   const query = await searchParams;
   const db = await requestDb();
+  const { t, format, link } = await getI18n();
   const data = getDataRange(db);
 
   if (!data.firstDate || !data.lastDate || !data.coveredThrough) {
     return (
       <>
-        <PageHeader title="Spending" />
+        <PageHeader title={t("nav.spending")} />
         <Card>
           <EmptyState
             icon={ChartColumn}
-            title="Nothing to analyse yet"
+            title={t("spending.nothing")}
             action={
-              <Link href="/import" className={buttonClass({ variant: "primary" })}>
-                Import a bank export
+              <Link href={link("/import")} className={buttonClass({ variant: "primary" })}>
+                {t("common.importExport")}
               </Link>
             }
           >
-            Import your transactions to see where the money goes.
+            {t("spending.nothingText")}
           </EmptyState>
         </Card>
       </>
@@ -124,10 +129,9 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
 
   // the transaction list uses the month filter for one month, dates otherwise
   const listQuery = rangeKey === "month" ? { m: month } : { from: coveredFrom, to: coveredTo };
+  const monthLabel = format.month(month);
   const periodLabel =
-    rangeKey === "month"
-      ? formatMonth(month)
-      : `${formatDate(coveredFrom)} – ${formatDate(coveredTo)}`;
+    rangeKey === "month" ? monthLabel : `${format.date(coveredFrom)} – ${format.date(coveredTo)}`;
 
   // — charts —
   const trendFrom = (() => {
@@ -137,23 +141,24 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
   const trend = getMonthlyTotals(db, trendFrom, bounds.max);
   const partialNote = (monthValue: IsoMonth): string | undefined => {
     if (monthValue === monthOf(data.firstDate!) && dayOfMonth(data.firstDate!) > 1) {
-      return `Partial: data starts ${formatDayMonth(data.firstDate!)}`;
+      return t("spending.partialStarts", { date: format.dayMonth(data.firstDate!) });
     }
     if (monthValue === monthOf(covered) && dayOfMonth(covered) < daysInMonth(monthValue)) {
-      return `Partial: data through ${formatDayMonth(covered)}`;
+      return t("spending.partialThrough", { date: format.dayMonth(covered) });
     }
     return undefined;
   };
   const daily = rangeKey === "month" ? getDailySpending(db, month) : [];
+  const dayOf = (index: number) => format.dayMonth(`${month}-${String(index + 1).padStart(2, "0")}`);
 
   return (
     <>
-      <PageHeader title="Spending" description={periodLabel}>
-        <nav aria-label="Period" className="inline-flex rounded-lg border border-line bg-surface p-0.5">
+      <PageHeader title={t("nav.spending")} description={periodLabel}>
+        <nav aria-label={t("common.period")} className="inline-flex rounded-lg border border-line bg-surface p-0.5">
           {RANGES.map((range) => (
             <Link
               key={range.key}
-              href={href("/spending", { range: range.key === "month" ? undefined : range.key, m: range.key === "month" ? month : undefined })}
+              href={link("/spending", { range: range.key === "month" ? undefined : range.key, m: range.key === "month" ? month : undefined })}
               scroll={false}
               aria-current={range.key === rangeKey ? "true" : undefined}
               className={cn(
@@ -161,7 +166,7 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
                 range.key === rangeKey ? "bg-wash font-medium text-ink" : "text-ink-2 hover:text-ink",
               )}
             >
-              {range.label}
+              {t(range.label)}
             </Link>
           ))}
         </nav>
@@ -171,16 +176,16 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Spending" className="sm:col-span-2 lg:col-span-1">
+        <StatTile label={t("flow.expense")} className="sm:col-span-2 lg:col-span-1">
           <Figure cents={totals.spending} />
         </StatTile>
-        <StatTile label="Income">
+        <StatTile label={t("flow.income")}>
           <Figure cents={totals.income} />
         </StatTile>
-        <StatTile label="Income minus spending">
+        <StatTile label={t("common.net")}>
           <Figure cents={totals.net} />
         </StatTile>
-        <StatTile label="Spending per day" detail={`over ${coveredDays} ${coveredDays === 1 ? "day" : "days"} with data`}>
+        <StatTile label={t("spending.perDay")} detail={t("spending.overDays", { count: coveredDays })}>
           <Figure cents={Math.round(totals.spending / coveredDays)} />
         </StatTile>
       </div>
@@ -188,29 +193,26 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {rangeKey === "month" ? (
           <ChartFrame
-            title="Day by day"
-            description={`Spending on each day of ${formatMonth(month)}`}
+            title={t("spending.dayByDay")}
+            description={t("spending.onEachDay", { month: monthLabel })}
             chart={
               <ColumnChart
                 groups={daily.map((amount, index) => ({
                   label: (index + 1) % 5 === 0 || index === 0 ? String(index + 1) : "",
-                  title: formatDayMonth(`${month}-${String(index + 1).padStart(2, "0")}`),
+                  title: dayOf(index),
                   values: [amount],
                 }))}
-                series={[{ id: "spending", label: "Spending", color: "var(--accent)" }]}
+                series={[{ id: "spending", label: t("flow.expense"), color: "var(--accent)" }]}
                 directLabels="max"
-                description={`Spending per day in ${formatMonth(month)}`}
+                description={t("spending.perDayIn", { month: monthLabel })}
               />
             }
             table={
               <DataTable
-                caption={`Spending per day in ${formatMonth(month)}`}
-                rowHeader="Day"
-                columns={["Spending"]}
-                rows={daily.map((amount, index) => ({
-                  label: formatDayMonth(`${month}-${String(index + 1).padStart(2, "0")}`),
-                  values: [amount],
-                }))}
+                caption={t("spending.perDayIn", { month: monthLabel })}
+                rowHeader={t("common.day")}
+                columns={[t("flow.expense")]}
+                rows={daily.map((amount, index) => ({ label: dayOf(index), values: [amount] }))}
               />
             }
             footnote={partialNote(month)}
@@ -219,42 +221,42 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
 
         <ChartFrame
           className={rangeKey === "month" ? undefined : "lg:col-span-2"}
-          title="Month by month"
-          description="Income and spending"
+          title={t("spending.monthByMonth")}
+          description={t("spending.incomeAndSpending")}
           legend={[
-            { label: "Income", color: "var(--income)", mark: "bar" },
-            { label: "Spending", color: "var(--accent)", mark: "bar" },
+            { label: t("flow.income"), color: "var(--income)", mark: "bar" },
+            { label: t("flow.expense"), color: "var(--accent)", mark: "bar" },
           ]}
           chart={
             <ColumnChart
               groups={trend.map((entry) => ({
-                label: formatMonthShort(entry.month, trend.length > 6 && entry.month.endsWith("-01")),
-                title: formatMonth(entry.month),
+                label: format.monthShort(entry.month, trend.length > 6 && entry.month.endsWith("-01")),
+                title: format.month(entry.month),
                 values: [entry.income, entry.spending],
                 note: partialNote(entry.month),
               }))}
               series={[
-                { id: "income", label: "Income", color: "var(--income)" },
-                { id: "spending", label: "Spending", color: "var(--accent)" },
+                { id: "income", label: t("flow.income"), color: "var(--income)" },
+                { id: "spending", label: t("flow.expense"), color: "var(--accent)" },
               ]}
               directLabels="last"
-              description="Income and spending per month"
+              description={t("spending.incomeAndSpendingPerMonth")}
             />
           }
           table={
             <DataTable
-              caption="Income and spending per month"
-              rowHeader="Month"
-              columns={["Income", "Spending"]}
+              caption={t("spending.incomeAndSpendingPerMonth")}
+              rowHeader={t("common.month")}
+              columns={[t("flow.income"), t("flow.expense")]}
               rows={trend.map((entry) => ({
-                label: formatMonth(entry.month),
+                label: format.month(entry.month),
                 values: [entry.income, entry.spending],
               }))}
             />
           }
           footnote={
             trend.some((entry) => partialNote(entry.month))
-              ? `Data covers ${formatDate(data.firstDate)} to ${formatDate(covered)}; the first and last month may be incomplete.`
+              ? t("spending.coverage", { from: format.date(data.firstDate), to: format.date(covered) })
               : undefined
           }
         />
@@ -262,34 +264,34 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
 
       <div className="mt-4 grid items-start gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
-          <CardHeader title="By category" description="Net of refunds" />
+          <CardHeader title={t("common.byCategory")} description={t("spending.netOfRefunds")} />
           <CardBody>
             {positive.length === 0 ? (
-              <p className="py-6 text-center text-sm text-ink-3">No spending in this period.</p>
+              <p className="py-6 text-center text-sm text-ink-3">{t("spending.noSpending")}</p>
             ) : (
               <RankedBars
                 total={spendingTotal}
                 items={positive.map((category) => ({
                   key: String(category.categoryId ?? "none"),
-                  label: category.name,
+                  label: categoryName(t, category),
                   icon: category.categoryId === null ? null : category.icon,
                   value: category.amount,
                   note: `${category.count}×`,
-                  href: href("/transactions", { ...listQuery, category: category.categoryId ?? "none" }),
+                  href: link("/transactions", { ...listQuery, category: category.categoryId ?? "none" }),
                 }))}
               />
             )}
             {refunds.length > 0 ? (
               <p className="mt-3 border-t border-hairline pt-3 text-[13px] text-ink-2">
-                Refunds outweighed spending in{" "}
-                {refunds.map((category, index) => (
-                  <span key={category.categoryId ?? "none"}>
-                    {index > 0 ? ", " : ""}
-                    <span className="text-ink">{category.name}</span> (
-                    <Money cents={-category.amount} sign="always" />)
-                  </span>
-                ))}
-                .
+                {t.rich("spending.refundsOutweighed", {
+                  categories: refunds.map((category, index) => (
+                    <span key={category.categoryId ?? "none"}>
+                      {index > 0 ? ", " : ""}
+                      <span className="text-ink">{categoryName(t, category)}</span> (
+                      <Money cents={-category.amount} sign="always" />)
+                    </span>
+                  )),
+                })}
               </p>
             ) : null}
           </CardBody>
@@ -297,19 +299,19 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
 
         <div className="space-y-4 lg:col-span-2">
           <Card>
-            <CardHeader title="Top merchants" />
+            <CardHeader title={t("spending.topMerchants")} />
             {merchants.length === 0 ? (
-              <p className="px-5 pb-6 text-center text-sm text-ink-3">No spending in this period.</p>
+              <p className="px-5 pb-6 text-center text-sm text-ink-3">{t("spending.noSpending")}</p>
             ) : (
               <ol className="pb-2">
                 {merchants.map((merchant) => (
                   <li key={merchant.merchantKey}>
                     <Link
-                      href={href("/transactions", { ...listQuery, merchant: merchant.merchantKey })}
+                      href={link("/transactions", { ...listQuery, merchant: merchant.merchantKey })}
                       className="flex items-center gap-3 px-5 py-2 transition-colors hover:bg-wash/60"
                     >
                       <CategoryIcon name={merchant.categoryIcon} size="sm" />
-                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{merchant.merchant}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{merchantName(t, merchant)}</span>
                       <span className="text-[13px] text-ink-3 tabular">{merchant.count}×</span>
                       <Money cents={merchant.amount} className="w-24 text-right text-sm text-ink tabular" />
                     </Link>
@@ -321,16 +323,16 @@ async function Spending({ searchParams }: Pick<PageProps<"/spending">, "searchPa
 
           {income.length > 0 ? (
             <Card>
-              <CardHeader title="Income" />
+              <CardHeader title={t("flow.income")} />
               <ul className="pb-2">
                 {income.map((source) => (
                   <li key={source.categoryId ?? "none"}>
                     <Link
-                      href={href("/transactions", { ...listQuery, category: source.categoryId ?? "none", flow: "income" })}
+                      href={link("/transactions", { ...listQuery, category: source.categoryId ?? "none", flow: "income" })}
                       className="flex items-center gap-3 px-5 py-2 transition-colors hover:bg-wash/60"
                     >
                       <CategoryIcon name={source.categoryId === null ? null : source.icon} size="sm" />
-                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{source.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{categoryName(t, source)}</span>
                       <Money cents={source.amount} className="text-sm text-ink tabular" />
                     </Link>
                   </li>

@@ -2,8 +2,9 @@
 
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { formatAxisValue, formatMoney } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 
 import { fromTop, niceScale } from "./scale";
 
@@ -47,6 +48,7 @@ export function LineChart({
   height = 208,
   description,
 }: LineChartProps) {
+  const { format } = useI18n();
   const plot = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<number | null>(null);
 
@@ -58,7 +60,7 @@ export function LineChart({
   const zero = y(0);
 
   const widestTick = scale.ticks
-    .map((tick) => formatAxisValue(tick, scale.max))
+    .map((tick) => format.axisValue(tick, scale.max))
     .reduce((a, b) => (b.length > a.length ? b : a), "");
 
   function indexAt(clientX: number): number | null {
@@ -101,7 +103,7 @@ export function LineChart({
             className="absolute right-0 -translate-y-1/2 leading-none"
             style={{ top: `${fromTop(scale, tick)}%` }}
           >
-            {formatAxisValue(tick, scale.max)}
+            {format.axisValue(tick, scale.max)}
           </span>
         ))}
       </div>

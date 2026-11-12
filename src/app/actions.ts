@@ -3,9 +3,12 @@
 import { refresh } from "next/cache";
 import { z } from "zod";
 
+import { defaultLocale, isLocale } from "@/i18n/config";
+import { i18nFor } from "@/i18n/languages";
+import type { MessageError } from "@/i18n/messages";
 import { getDb } from "@/server/db";
-import { deleteImport, ImportError, ingestExport, type IngestResult } from "@/server/import/ingest";
-import { ImportFormatError } from "@/server/import/workbook";
+import { UserFacingError } from "@/server/errors";
+import { deleteImport, ingestExport, type IngestResult } from "@/server/import/ingest";
 import * as mutations from "@/server/mutations";
 
 /**
@@ -13,27 +16,27 @@ import * as mutations from "@/server/mutations";
  *
  * Actions are plain HTTP endpoints, so each one validates its input even
  * though the app's own components always send well-formed values.
+ *
+ * A failure is reported as a message key (`error.*`), not as text: an action
+ * does not know which language its caller is showing, and the caller does.
+ * Components turn it into words with `t.error()`.
  */
 
 export type ActionResult<T = null> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  | { ok: false; error: MessageError };
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-function failure(error: unknown): { ok: false; error: string } {
-  if (
-    error instanceof mutations.UserError ||
-    error instanceof ImportError ||
-    error instanceof ImportFormatError
-  ) {
-    return { ok: false, error: error.message };
+function failure(error: unknown): { ok: false; error: MessageError } {
+  if (error instanceof UserFacingError) {
+    return { ok: false, error: { key: error.key, params: error.params } };
   }
   if (error instanceof z.ZodError) {
-    return { ok: false, error: "That request was not valid." };
+    return { ok: false, error: { key: "error.invalidRequest" } };
   }
   console.error(error);
-  return { ok: false, error: "Something went wrong. Nothing was changed." };
+  return { ok: false, error: { key: "error.unexpected" } };
 }
 
 /** Runs a mutation, then re-renders the current page with fresh data. */
@@ -59,32 +62,47 @@ const categoryKind = z.enum(["expense", "income", "transfer"]);
 export interface ImportedFile {
   filename: string;
   result?: IngestResult;
-  error?: string;
+  error?: MessageError;
 }
 
 export type ImportState = { files: ImportedFile[] } | null;
 
-/** Imports one or more uploaded export files. Used with `useActionState`. */
+/**
+ * Imports one or more uploaded export files. Used with `useActionState`.
+ *
+ * The form says which language it is shown in (`locale`): the first import
+ * creates the account, and its name is stored in that language.
+ */
 export async function importExports(_previous: ImportState, formData: FormData): Promise<ImportState> {
   const uploads = formData.getAll("file").filter((entry): entry is File => entry instanceof File && entry.size > 0);
   if (uploads.length === 0) {
-    return { files: [{ filename: "", error: "Choose an export file to import." }] };
+    return { files: [{ filename: "", error: { key: "error.noFile" } }] };
   }
 
   const accountField = formData.get("accountId");
   const accountId =
     typeof accountField === "string" && /^\d+$/.test(accountField) ? Number(accountField) : undefined;
 
+  const localeField = formData.get("locale");
+  const { t } = i18nFor(isLocale(localeField) ? localeField : defaultLocale);
+  const accountNames = {
+    main: t("account.main"),
+    named: (name: string) => t("account.named", { name }),
+  };
+
   const db = getDb();
   const files: ImportedFile[] = [];
   for (const upload of uploads) {
     if (upload.size > MAX_UPLOAD_BYTES) {
-      files.push({ filename: upload.name, error: "This file is larger than 10 MB." });
+      files.push({ filename: upload.name, error: { key: "error.fileTooLarge" } });
       continue;
     }
     try {
       const data = new Uint8Array(await upload.arrayBuffer());
-      files.push({ filename: upload.name, result: ingestExport(db, { filename: upload.name, data, accountId }) });
+      files.push({
+        filename: upload.name,
+        result: ingestExport(db, { filename: upload.name, data, accountId, accountNames }),
+      });
     } catch (error) {
       files.push({ filename: upload.name, error: failure(error).error });
     }

@@ -9,61 +9,68 @@ import { EmptyState, PageHeader, PageSkeleton, StatTile } from "@/components/pag
 import { IgnoreRecurringButton, RestoreRecurringButton } from "@/components/recurring/recurring-actions";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
-import { addDays, formatDate, formatDayMonth, formatRelativeDay, todayIso } from "@/lib/dates";
-import { href } from "@/lib/url";
+import type { Translator } from "@/i18n";
+import { withMerchantName } from "@/i18n/names";
+import { getI18n } from "@/i18n/server";
+import { addDays, todayIso } from "@/lib/dates";
 import { requestDb } from "@/server/db/request";
 import { getRecurring, listIgnoredRecurring, upcomingCharges } from "@/server/queries/recurring";
-import { CADENCE_LABEL, type RecurringSeries } from "@/server/recurring/detect";
+import type { RecurringSeries } from "@/server/recurring/detect";
 
-export const metadata: Metadata = { title: "Recurring" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return { title: t("nav.recurring") };
+}
 
-export default function RecurringPage() {
+export default async function RecurringPage() {
+  const { t } = await getI18n();
   return (
     <>
-      <PageHeader
-        title="Recurring"
-        description="Subscriptions, bills and regular income found in your transactions"
-      />
-      <Suspense fallback={<PageSkeleton />}>
+      <PageHeader title={t("nav.recurring")} description={t("recurring.description")} />
+      <Suspense fallback={<PageSkeleton label={t("common.loading")} />}>
         <Recurring />
       </Suspense>
     </>
   );
 }
 
-function evidenceLabel(series: RecurringSeries): string {
+function evidenceLabel(t: Translator, series: RecurringSeries): string {
   switch (series.evidence) {
     case "confirmed":
-      return "Marked by you";
+      return t("recurring.evidence.confirmed");
     case "pattern":
-      return series.variable ? "Paid every month" : "Same amount at a steady rhythm";
+      return series.variable ? t("recurring.evidence.everyMonth") : t("recurring.evidence.pattern");
     case "period":
-      return "Billing period named in the statement";
+      return t("recurring.evidence.period");
     case "known":
-      return "Known subscription or utility";
+      return t("recurring.evidence.known");
     case "keyword":
-      return "Recognised from the booking text";
+      return t("recurring.evidence.keyword");
   }
 }
 
 async function Recurring() {
   const db = await requestDb();
-  const { series, dataThrough } = getRecurring(db);
-  const ignored = listIgnoredRecurring(db);
+  const { t, format, link } = await getI18n();
+  const detected = getRecurring(db);
+  const { dataThrough } = detected;
+  // stored merchant names become the names to show before anything is rendered
+  const series = detected.series.map((item) => withMerchantName(t, item));
+  const ignored = listIgnoredRecurring(db).map((item) => withMerchantName(t, item));
 
   if (!dataThrough) {
     return (
       <Card>
         <EmptyState
           icon={Repeat}
-          title="Nothing to look through yet"
+          title={t("recurring.nothingYet")}
           action={
-            <Link href="/import" className={buttonClass({ variant: "primary" })}>
-              Import a bank export
+            <Link href={link("/import")} className={buttonClass({ variant: "primary" })}>
+              {t("common.importExport")}
             </Link>
           }
         >
-          Recurring payments are detected from your transactions once you import them.
+          {t("recurring.nothingYetText")}
         </EmptyState>
       </Card>
     );
@@ -83,26 +90,24 @@ async function Recurring() {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Fixed costs per month" detail={`${costs.length} bills and subscriptions`}>
+        <StatTile label={t("recurring.fixedPerMonth")} detail={t("recurring.billsCount", { count: costs.length })}>
           <Figure cents={monthlyCosts} />
         </StatTile>
-        <StatTile label="Fixed costs per year">
+        <StatTile label={t("recurring.fixedPerYear")}>
           <Figure cents={monthlyCosts * 12} />
         </StatTile>
-        <StatTile label="Regular income per month">
+        <StatTile label={t("recurring.incomePerMonth")}>
           <Figure cents={monthlyIncome} />
         </StatTile>
-        <StatTile label="Left after fixed costs" detail="per month, for everything else">
+        <StatTile label={t("recurring.leftAfter")} detail={t("recurring.leftAfterDetail")}>
           <Figure cents={monthlyIncome - monthlyCosts} />
         </StatTile>
       </div>
 
       {series.length === 0 ? (
         <Card>
-          <EmptyState icon={Repeat} title="No recurring payments found yet">
-            A payment is recognised once it has repeated — the same amount a month apart, say — or
-            when the statement names a billing period. With more months imported, more will show up.
-            You can also mark any transaction as recurring from its details.
+          <EmptyState icon={Repeat} title={t("recurring.noneFound")}>
+            {t("recurring.noneFoundText")}
           </EmptyState>
         </Card>
       ) : null}
@@ -110,16 +115,16 @@ async function Recurring() {
       {upcoming.length > 0 ? (
         <Card>
           <CardHeader
-            title="Next 30 days"
-            description={`Expected from ${formatDate(today)}, based on each payment's rhythm`}
+            title={t("recurring.next30")}
+            description={t("recurring.next30Description", { date: format.date(today) })}
           />
           <ul className="divide-y divide-hairline pb-2">
             {upcoming.map(({ series: item, date }) => (
               <li key={`${item.key}-${date}`} className="flex items-center gap-3 px-5 py-2.5">
-                <span className="w-16 shrink-0 text-[13px] text-ink-2 tabular">{formatDayMonth(date)}</span>
+                <span className="w-16 shrink-0 text-[13px] text-ink-2 tabular">{format.dayMonth(date)}</span>
                 <CategoryIcon name={item.categoryIcon} size="sm" />
                 <span className="min-w-0 flex-1 truncate text-sm text-ink">{item.merchant}</span>
-                <span className="hidden text-[13px] text-ink-3 sm:inline">{formatRelativeDay(date, today)}</span>
+                <span className="hidden text-[13px] text-ink-3 sm:inline">{format.relativeDay(date, today)}</span>
                 <span className="w-28 text-right text-sm tabular">
                   {item.variable ? <span className="text-ink-3">≈ </span> : null}
                   <FlowAmount cents={item.direction === "out" ? -item.amount : item.amount} />
@@ -131,20 +136,20 @@ async function Recurring() {
       ) : null}
 
       {costs.length > 0 ? (
-        <SeriesCard title="Bills and subscriptions" description="Sorted by what they cost per month" series={costs} />
+        <SeriesCard title={t("recurring.bills")} description={t("recurring.billsDescription")} series={costs} />
       ) : null}
-      {income.length > 0 ? <SeriesCard title="Regular income" series={income} /> : null}
+      {income.length > 0 ? <SeriesCard title={t("recurring.income")} series={income} /> : null}
       {inactive.length > 0 ? (
         <SeriesCard
-          title="Possibly ended"
-          description={`No payment when one was due — judged by the data through ${formatDate(dataThrough)}`}
+          title={t("recurring.ended")}
+          description={t("recurring.endedDescription", { date: format.date(dataThrough) })}
           series={inactive}
         />
       ) : null}
 
       {ignored.length > 0 ? (
         <Card>
-          <CardHeader title="Marked as not recurring" />
+          <CardHeader title={t("recurring.ignored")} />
           <ul className="divide-y divide-hairline pb-2">
             {ignored.map((item) => (
               <li key={`${item.direction}-${item.merchantKey}`} className="flex items-center gap-3 px-5 py-2">
@@ -182,9 +187,17 @@ function SeriesCard({
   );
 }
 
-function SeriesRow({ series }: { series: RecurringSeries }) {
+/** One recurring payment; `series.merchant` is already the name to show. */
+async function SeriesRow({ series }: { series: RecurringSeries }) {
+  const { t, format, link } = await getI18n();
   const signed = (amount: number) => (series.direction === "out" ? -amount : amount);
   const history = [...series.occurrences].reverse();
+  const rhythm = [
+    t(`cadence.${series.cadence}`),
+    t("recurring.last", { date: format.dayMonth(series.lastDate) }),
+    series.active ? t("recurring.nextAround", { date: format.dayMonth(series.nextDate) }) : null,
+  ];
+  const evidence = [evidenceLabel(t, series), series.variable ? t("recurring.amountVaries") : null];
 
   return (
     <details className="group">
@@ -192,10 +205,7 @@ function SeriesRow({ series }: { series: RecurringSeries }) {
         <CategoryIcon name={series.categoryIcon} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink">{series.merchant}</p>
-          <p className="truncate text-[13px] text-ink-3">
-            {CADENCE_LABEL[series.cadence]} · last {formatDayMonth(series.lastDate)}
-            {series.active ? ` · next around ${formatDayMonth(series.nextDate)}` : ""}
-          </p>
+          <p className="truncate text-[13px] text-ink-3">{rhythm.filter(Boolean).join(" · ")}</p>
         </div>
         <div className="text-right">
           <p className="text-sm tabular">
@@ -204,7 +214,7 @@ function SeriesRow({ series }: { series: RecurringSeries }) {
           </p>
           {series.cadence !== "monthly" || series.variable ? (
             <p className="text-[13px] text-ink-3 tabular">
-              <Money cents={series.monthlyAmount} /> / month
+              {t.rich("recurring.perMonth", { amount: <Money cents={series.monthlyAmount} /> })}
             </p>
           ) : null}
         </div>
@@ -217,15 +227,14 @@ function SeriesRow({ series }: { series: RecurringSeries }) {
       <div className="px-5 pt-1 pb-4 sm:pl-[4.25rem]">
         <p className="flex items-center gap-1.5 text-[13px] text-ink-2">
           <CalendarClock aria-hidden className="size-3.5 text-ink-3" />
-          {evidenceLabel(series)}
-          {series.variable ? " · the amount varies" : ""}
+          {evidence.filter(Boolean).join(" · ")}
         </p>
         <table className="mt-3 w-full max-w-sm text-[13px]">
-          <caption className="sr-only">Payments so far</caption>
+          <caption className="sr-only">{t("recurring.paymentsSoFar")}</caption>
           <tbody>
             {history.slice(0, 12).map((occurrence) => (
               <tr key={occurrence.id} className="border-b border-hairline last:border-0">
-                <td className="py-1.5 text-ink-2">{formatDate(occurrence.date)}</td>
+                <td className="py-1.5 text-ink-2">{format.date(occurrence.date)}</td>
                 <td className="py-1.5 text-right">
                   <FlowAmount cents={signed(occurrence.amount)} />
                 </td>
@@ -234,20 +243,20 @@ function SeriesRow({ series }: { series: RecurringSeries }) {
           </tbody>
         </table>
         {history.length > 12 ? (
-          <p className="mt-1 text-xs text-ink-3">and {history.length - 12} earlier</p>
+          <p className="mt-1 text-xs text-ink-3">{t("recurring.andEarlier", { count: history.length - 12 })}</p>
         ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
-            href={href("/transactions", { merchant: series.merchantKey })}
+            href={link("/transactions", { merchant: series.merchantKey })}
             className={buttonClass({ size: "sm" })}
           >
-            Show transactions
+            {t("recurring.showTransactions")}
           </Link>
           {series.evidence === "confirmed" ? (
             <RestoreRecurringButton
               merchantKey={series.merchantKey}
               direction={series.direction}
-              label="Unmark"
+              label={t("recurring.unmark")}
             />
           ) : (
             <IgnoreRecurringButton

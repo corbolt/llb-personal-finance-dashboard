@@ -24,6 +24,7 @@ export interface TransactionRow {
   reference: string | null;
   categoryId: number | null;
   categoryName: string | null;
+  categorySlug: string | null;
   categoryIcon: string | null;
   categorySource: "none" | "auto" | "rule" | "manual";
   flow: Flow;
@@ -36,12 +37,18 @@ const COLUMNS = `
   amount, currency, original_amount AS originalAmount, original_currency AS originalCurrency,
   kind, raw_text AS rawText, merchant, merchant_key AS merchantKey, location, memo,
   card_last4 AS cardLast4, reference, category_id AS categoryId,
-  category_name AS categoryName, category_icon AS categoryIcon,
+  category_name AS categoryName, category_slug AS categorySlug, category_icon AS categoryIcon,
   category_source AS categorySource, flow, note, excluded`;
 
 export interface TransactionFilter {
   /** Free text; also matches an exact amount such as `45.15`. */
   search?: string;
+  /**
+   * The categories whose name matches `search`. Given by a caller that shows
+   * category names in another language than they are stored in; without it
+   * the search looks at the stored names.
+   */
+  searchCategoryIds?: readonly number[];
   from?: IsoDate;
   to?: IsoDate;
   /** A category id, or `"none"` for bookings without a category. */
@@ -61,9 +68,15 @@ function buildWhere(filter: TransactionFilter): { where: string; params: Record<
   if (search) {
     const escaped = search.replace(/[\\%_]/g, (ch) => `\\${ch}`);
     params.search = `%${escaped}%`;
-    const fields = ["merchant", "memo", "raw_text", "note", "category_name"].map(
+    const fields = ["merchant", "memo", "raw_text", "note"].map(
       (field) => `${field} LIKE :search ESCAPE '\\'`,
     );
+    if (filter.searchCategoryIds) {
+      params.searchCategories = JSON.stringify(filter.searchCategoryIds);
+      fields.push("category_id IN (SELECT value FROM json_each(:searchCategories))");
+    } else {
+      fields.push("category_name LIKE :search ESCAPE '\\'");
+    }
     const amount = /\d/.test(search) ? parseMoneyInput(search) : null;
     if (amount !== null) {
       params.searchAmount = Math.abs(amount);

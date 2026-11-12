@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { canonicalLocale, isLocale, LOCALE_COOKIE, localizePath, negotiateLocale } from "@/i18n/config";
+
 /**
  * Only answer requests addressed to this machine.
  *
@@ -26,11 +28,46 @@ function hostnameOf(hostHeader: string): string {
   return host.split(":")[0];
 }
 
+/**
+ * Framework assets (`/_next/…`) and files (`/icon.svg`) have no language.
+ * Pages never have a dot in their last segment.
+ */
+function isAsset(pathname: string): boolean {
+  return pathname.startsWith("/_next/") || /\.[^/]+$/.test(pathname);
+}
+
+/**
+ * Every page lives under its language: `/de-LI/budgets`. An address without
+ * one — the bare `/`, an old bookmark — is sent to the same page in the
+ * language picked in the menu, or else the browser's.
+ */
+function withLanguage(request: NextRequest): NextResponse | null {
+  const { pathname } = request.nextUrl;
+  const [, first = ""] = pathname.split("/");
+  if (isLocale(first) || isAsset(pathname)) return null;
+
+  const url = request.nextUrl.clone();
+  const misspelt = canonicalLocale(first); // `/de-li/…`
+  if (misspelt) {
+    url.pathname = `/${misspelt}${pathname.slice(first.length + 1)}`;
+  } else {
+    const locale = negotiateLocale(
+      request.cookies.get(LOCALE_COOKIE)?.value,
+      request.headers.get("accept-language"),
+    );
+    url.pathname = localizePath(locale, pathname);
+  }
+  return NextResponse.redirect(url);
+}
+
+// No `matcher`: the host check has to see every request, Server Actions included.
 export function proxy(request: NextRequest) {
   const hostname = hostnameOf(request.headers.get("host") ?? "");
-  if (LOOPBACK.has(hostname) || extraHosts.includes(hostname)) return NextResponse.next();
-  return new NextResponse("This app only answers on localhost.", {
-    status: 403,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
+  if (!LOOPBACK.has(hostname) && !extraHosts.includes(hostname)) {
+    return new NextResponse("This app only answers on localhost.", {
+      status: 403,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+  return withLanguage(request) ?? NextResponse.next();
 }

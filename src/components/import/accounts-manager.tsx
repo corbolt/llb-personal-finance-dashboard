@@ -9,10 +9,11 @@ import { Money } from "@/components/money";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/field";
-import { formatDate } from "@/lib/dates";
+import { useI18n } from "@/i18n/client";
 import type { AccountSummary } from "@/server/queries/accounts";
 
 export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
+  const { t, format } = useI18n();
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
@@ -21,7 +22,7 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
     startTransition(async () => {
       const result = await work();
       if (!result.ok) {
-        toast.error(result.error);
+        toast.error(t.error(result.error));
         return;
       }
       toast.success(done);
@@ -30,8 +31,8 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
   }
 
   function save() {
-    if (editing === "new") submit(() => createAccount(name), "Account added");
-    else if (editing !== null) submit(() => renameAccount(editing, name), "Account renamed");
+    if (editing === "new") submit(() => createAccount(name), t("accounts.added"));
+    else if (editing !== null) submit(() => renameAccount(editing, name), t("accounts.renamed"));
   }
 
   const editor = (
@@ -46,15 +47,15 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
         autoFocus
         value={name}
         onChange={(event) => setName(event.target.value)}
-        placeholder="Account name"
-        aria-label="Account name"
+        placeholder={t("accounts.name")}
+        aria-label={t("accounts.name")}
         maxLength={60}
         className="h-8 flex-1"
       />
-      <Button type="submit" size="icon" variant="primary" disabled={pending} aria-label="Save">
+      <Button type="submit" size="icon" variant="primary" disabled={pending} aria-label={t("common.save")}>
         <Check aria-hidden className="size-4" />
       </Button>
-      <Button size="icon" variant="ghost" onClick={() => setEditing(null)} aria-label="Cancel">
+      <Button size="icon" variant="ghost" onClick={() => setEditing(null)} aria-label={t("common.cancel")}>
         <X aria-hidden className="size-4" />
       </Button>
     </form>
@@ -73,15 +74,19 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
                   <p className="truncate text-sm font-medium text-ink">{account.name}</p>
                   <p className="text-[13px] text-ink-3">
                     {account.transactionCount === 0
-                      ? "No transactions yet"
-                      : `${account.transactionCount} transactions · ${formatDate(account.firstDate!)} – ${formatDate(account.lastDate!)}`}
+                      ? t("accounts.noTransactions")
+                      : t("accounts.summary", {
+                          count: account.transactionCount,
+                          from: format.date(account.firstDate!),
+                          to: format.date(account.lastDate!),
+                        })}
                   </p>
                 </div>
                 {account.balance !== null ? (
                   <div className="text-right">
                     <Money cents={account.balance} currency={account.currency} className="text-sm font-medium text-ink tabular" />
                     <p className="text-[13px] text-ink-3">
-                      balance on {formatDate(account.balanceDate!)}
+                      {t("accounts.balanceOn", { date: format.date(account.balanceDate!) })}
                     </p>
                   </div>
                 ) : null}
@@ -89,7 +94,7 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
                   <Button
                     size="icon"
                     variant="ghost"
-                    aria-label={`Rename ${account.name}`}
+                    aria-label={t("accounts.rename", { name: account.name })}
                     onClick={() => {
                       setName(account.name);
                       setEditing(account.id);
@@ -101,12 +106,12 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
                     <ConfirmButton
                       size="sm"
                       variant="ghost"
-                      confirmLabel="Delete?"
+                      confirmLabel={t("common.confirmDelete")}
                       disabled={pending}
-                      onConfirm={() => submit(() => deleteAccount(account.id), "Account deleted")}
+                      onConfirm={() => submit(() => deleteAccount(account.id), t("accounts.deleted"))}
                     >
                       <Trash2 aria-hidden className="size-3.5" />
-                      <span className="sr-only">Delete {account.name}</span>
+                      <span className="sr-only">{t("accounts.delete", { name: account.name })}</span>
                     </ConfirmButton>
                   ) : null}
                 </div>
@@ -127,7 +132,7 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
             }}
           >
             <Plus aria-hidden className="size-4" />
-            Add another account
+            {t("accounts.addAnother")}
           </Button>
         </div>
       ) : null}

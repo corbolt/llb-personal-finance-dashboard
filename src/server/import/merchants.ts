@@ -289,12 +289,25 @@ function prettify(raw: string): string {
   return name || collapseWhitespace(raw);
 }
 
+/**
+ * Names for bookings that have no counterparty, by merchant key. They are
+ * stored with the booking, and the interface shows them in its own language
+ * (`src/i18n/names.ts`) by recognising exactly these — so never change one
+ * that has shipped.
+ */
+export const GENERATED_MERCHANTS: Readonly<Record<string, string>> = {
+  transfer: "Account transfer",
+  closing: "Account closing",
+  // what `parseBookingText` calls the counterparty of a booking without text
+  unknown: "Unknown",
+};
+
 export function normaliseMerchant(counterparty: string, kind: BookingKind): Merchant {
   if (kind === "transfer") {
-    return { name: "Account transfer", key: "transfer", brand: null };
+    return { name: GENERATED_MERCHANTS.transfer, key: "transfer", brand: null };
   }
   if (kind === "closing") {
-    return { name: "Account closing", key: "closing", brand: null };
+    return { name: GENERATED_MERCHANTS.closing, key: "closing", brand: null };
   }
   if (kind === "fee") {
     const name = collapseWhitespace(counterparty);

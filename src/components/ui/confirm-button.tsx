@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
+import { useI18n } from "@/i18n/client";
+
 import { Button, type ButtonStyle } from "./button";
 
 /**
@@ -10,16 +12,18 @@ import { Button, type ButtonStyle } from "./button";
  */
 export function ConfirmButton({
   onConfirm,
-  confirmLabel = "Click again to confirm",
+  confirmLabel,
   disabled,
   children,
   ...style
 }: {
   onConfirm: () => void;
+  /** Shown while armed; defaults to "Click again to confirm". */
   confirmLabel?: string;
   disabled?: boolean;
   children: ReactNode;
 } & ButtonStyle) {
+  const { t } = useI18n();
   const [armed, setArmed] = useState(false);
 
   useEffect(() => {
@@ -43,7 +47,7 @@ export function ConfirmButton({
         onConfirm();
       }}
     >
-      {armed ? confirmLabel : children}
+      {armed ? (confirmLabel ?? t("common.confirmAgain")) : children}
     </Button>
   );
 }

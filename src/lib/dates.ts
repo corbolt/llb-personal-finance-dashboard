@@ -2,6 +2,9 @@
  * Dates are handled as plain ISO strings (`YYYY-MM-DD`) and months as
  * `YYYY-MM`. Bank bookings are calendar dates without a time zone, so nothing
  * here ever converts through local time.
+ *
+ * This file is calendar arithmetic only. Turning a date into text depends on
+ * the interface language and lives in `src/i18n/format.ts`.
  */
 
 export type IsoDate = string; // YYYY-MM-DD
@@ -87,78 +90,7 @@ export function todayIso(now: Date = new Date()): IsoDate {
   return `${y}-${m}-${d}`;
 }
 
-/*
- * Formatting uses fixed English names instead of `Intl.DateTimeFormat`: its
- * output depends on the ICU version ("Sep" in one runtime, "Sept" in another),
- * and text rendered on the server must match what the browser renders when it
- * hydrates the page.
- */
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-const monthName = (month: number) => MONTHS[month - 1] ?? "";
-const monthAbbreviation = (month: number) => monthName(month).slice(0, 3);
-
-function parts(date: IsoDate): { year: number; month: number; day: number } {
-  const [year, month, day] = date.split("-").map(Number);
-  return { year, month, day };
-}
-
-/** `11 Nov 2026` */
-export function formatDate(date: IsoDate): string {
-  const { year, month, day } = parts(date);
-  return `${day} ${monthAbbreviation(month)} ${year}`;
-}
-
-/** `11 Nov` */
-export function formatDayMonth(date: IsoDate): string {
-  const { month, day } = parts(date);
-  return `${day} ${monthAbbreviation(month)}`;
-}
-
-/** `Wed 11 Nov` — adds the year when it differs from `referenceYear`. */
-export function formatDayHeading(date: IsoDate, referenceYear?: string): string {
-  const weekday = WEEKDAYS[new Date(utc(date)).getUTCDay()];
-  const base = `${weekday} ${formatDayMonth(date)}`;
-  const year = date.slice(0, 4);
-  return referenceYear && referenceYear !== year ? `${base} ${year}` : base;
-}
-
-/** `November 2026` */
-export function formatMonth(month: IsoMonth): string {
-  return `${formatMonthName(month)} ${month.slice(0, 4)}`;
-}
-
-/** `November` */
-export function formatMonthName(month: IsoMonth): string {
-  return monthName(Number(month.slice(5, 7)));
-}
-
-/** `Nov` — or `Nov 26` when `withYear` is set. */
-export function formatMonthShort(month: IsoMonth, withYear = false): string {
-  const name = monthAbbreviation(Number(month.slice(5, 7)));
-  return withYear ? `${name} ${month.slice(2, 4)}` : name;
-}
-
-/** `3 days ago`, `in 5 days`, `today` — relative to `today`. */
-export function formatRelativeDay(date: IsoDate, today: IsoDate): string {
-  const delta = diffDays(today, date);
-  if (delta === 0) return "today";
-  if (delta === 1) return "tomorrow";
-  if (delta === -1) return "yesterday";
-  if (delta > 0) return `in ${delta} days`;
-  return `${-delta} days ago`;
+/** Day of the week, `0` for Sunday through `6` for Saturday. */
+export function weekdayOf(date: IsoDate): number {
+  return new Date(utc(date)).getUTCDay();
 }

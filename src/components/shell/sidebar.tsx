@@ -1,17 +1,19 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { formatDate } from "@/lib/dates";
+import { getI18n } from "@/i18n/server";
 import { APP_NAME } from "@/lib/site";
 import { requestDb } from "@/server/db/request";
 import { getDataRange } from "@/server/queries/accounts";
 
+import { LanguageSwitcher } from "./language-switcher";
 import { NavLinks } from "./nav-links";
 import { ThemeToggle } from "./theme-toggle";
 
-function Brand() {
+async function Brand() {
+  const { link } = await getI18n();
   return (
-    <Link href="/" className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-ink">
+    <Link href={link("/")} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-ink">
       <svg viewBox="0 0 32 32" aria-hidden className="size-7 shrink-0">
         <rect width="32" height="32" rx="8" className="fill-ink" />
         <path
@@ -31,13 +33,14 @@ function Brand() {
 /** How current the data is — the app only knows what the last import contained. */
 async function DataStatus() {
   const db = await requestDb();
+  const { t, format } = await getI18n();
   const { coveredThrough } = getDataRange(db);
   if (!coveredThrough) return null;
   return (
     <p className="px-2.5 text-xs leading-relaxed text-ink-3">
-      Data through
+      {t("shell.dataThrough")}
       <br />
-      <span className="text-ink-2">{formatDate(coveredThrough)}</span>
+      <span className="text-ink-2">{format.date(coveredThrough)}</span>
     </p>
   );
 }
@@ -48,7 +51,8 @@ export function Sidebar() {
       <div className="flex h-full flex-col lg:py-4">
         <div className="flex items-center justify-between px-3 py-2.5 lg:px-3 lg:pt-0 lg:pb-4">
           <Brand />
-          <div className="lg:hidden">
+          <div className="flex items-center lg:hidden">
+            <LanguageSwitcher compact />
             <ThemeToggle />
           </div>
         </div>
@@ -57,7 +61,10 @@ export function Sidebar() {
           <Suspense fallback={null}>
             <DataStatus />
           </Suspense>
-          <ThemeToggle />
+          <div className="flex flex-col items-start">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </aside>

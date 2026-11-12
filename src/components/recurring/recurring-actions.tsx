@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { ignoreRecurring, resetRecurring } from "@/app/actions";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/client";
 
 type Direction = "out" | "in";
 
@@ -18,6 +19,7 @@ export function IgnoreRecurringButton({
   direction: Direction;
   merchant: string;
 }) {
+  const { t } = useI18n();
   const [pending, startTransition] = useTransition();
   return (
     <Button
@@ -28,19 +30,19 @@ export function IgnoreRecurringButton({
         startTransition(async () => {
           const result = await ignoreRecurring(merchantKey, direction);
           if (!result.ok) {
-            toast.error(result.error);
+            toast.error(t.error(result.error));
             return;
           }
-          toast.success(`${merchant} is no longer treated as recurring`, {
+          toast.success(t("recurring.noLonger", { merchant }), {
             action: {
-              label: "Undo",
+              label: t("common.undo"),
               onClick: () => void resetRecurring(merchantKey, direction),
             },
           });
         })
       }
     >
-      Not recurring
+      {t("recurring.notRecurring")}
     </Button>
   );
 }
@@ -49,12 +51,14 @@ export function IgnoreRecurringButton({
 export function RestoreRecurringButton({
   merchantKey,
   direction,
-  label = "Restore",
+  label,
 }: {
   merchantKey: string;
   direction: Direction;
+  /** Defaults to "Restore". */
   label?: string;
 }) {
+  const { t } = useI18n();
   const [pending, startTransition] = useTransition();
   return (
     <Button
@@ -63,11 +67,11 @@ export function RestoreRecurringButton({
       onClick={() =>
         startTransition(async () => {
           const result = await resetRecurring(merchantKey, direction);
-          if (!result.ok) toast.error(result.error);
+          if (!result.ok) toast.error(t.error(result.error));
         })
       }
     >
-      {label}
+      {label ?? t("recurring.restore")}
     </Button>
   );
 }

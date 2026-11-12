@@ -4,20 +4,22 @@ import Link from "next/link";
 import { EmptyState } from "@/components/page";
 import { buttonClass } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getI18n } from "@/i18n/server";
 
-export default function NotFound() {
+export default async function NotFound() {
+  const { t, link } = await getI18n();
   return (
     <Card>
       <EmptyState
         icon={Compass}
-        title="Page not found"
+        title={t("notFound.title")}
         action={
-          <Link href="/" className={buttonClass({ variant: "primary" })}>
-            Back to the overview
+          <Link href={link("/")} className={buttonClass({ variant: "primary" })}>
+            {t("notFound.back")}
           </Link>
         }
       >
-        There is nothing at this address.
+        {t("notFound.text")}
       </EmptyState>
     </Card>
   );

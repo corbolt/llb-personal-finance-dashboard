@@ -82,15 +82,6 @@ export const CADENCES: Cadence[] = [
   "yearly",
 ];
 
-export const CADENCE_LABEL: Record<Cadence, string> = {
-  weekly: "Weekly",
-  biweekly: "Every 2 weeks",
-  monthly: "Monthly",
-  quarterly: "Quarterly",
-  semiannual: "Every 6 months",
-  yearly: "Yearly",
-};
-
 const PER_MONTH: Record<Cadence, number> = {
   weekly: 52 / 12,
   biweekly: 26 / 12,

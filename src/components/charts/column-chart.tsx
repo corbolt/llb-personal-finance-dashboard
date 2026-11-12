@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { formatAxisValue, formatMoney } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 
 import { fromTop, niceScale } from "./scale";
 
@@ -35,10 +36,6 @@ export interface ColumnChartProps {
   description: string;
 }
 
-function compact(cents: number, axisMax: number): string {
-  return formatAxisValue(Math.round(cents / 100), Math.max(axisMax, 10_000));
-}
-
 /**
  * Column chart built from plain elements: thin bars (never wider than 24px)
  * growing from a shared baseline, with the whole column as hover and focus
@@ -52,6 +49,7 @@ export function ColumnChart({
   directLabels = "none",
   description,
 }: ColumnChartProps) {
+  const { format } = useI18n();
   const [active, setActive] = useState<number | null>(null);
 
   const all = groups.flatMap((group) => group.values);
@@ -59,8 +57,10 @@ export function ColumnChart({
   const barHeight = (cents: number) => Math.max(0, 100 - fromTop(scale, Math.max(0, cents) / 100));
 
   const widestTick = scale.ticks
-    .map((tick) => formatAxisValue(tick, scale.max))
+    .map((tick) => format.axisValue(tick, scale.max))
     .reduce((a, b) => (b.length > a.length ? b : a), "");
+  /** The value on a bar's cap: always in the compact style, however small the axis. */
+  const compact = (cents: number) => format.axisValue(Math.round(cents / 100), Math.max(scale.max, 10_000));
 
   let labelled = -1;
   if (directLabels === "last") labelled = groups.length - 1;
@@ -83,7 +83,7 @@ export function ColumnChart({
             className="absolute right-0 -translate-y-1/2 leading-none"
             style={{ top: `${fromTop(scale, tick)}%` }}
           >
-            {formatAxisValue(tick, scale.max)}
+            {format.axisValue(tick, scale.max)}
           </span>
         ))}
       </div>
@@ -158,7 +158,7 @@ export function ColumnChart({
                                 : "left-0",
                           )}
                         >
-                          {compact(value, scale.max)}
+                          {compact(value)}
                         </span>
                       ) : null}
                     </div>

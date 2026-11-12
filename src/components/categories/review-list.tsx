@@ -7,8 +7,7 @@ import { toast } from "sonner";
 import { setMerchantCategory } from "@/app/actions";
 import { CategorySelect, type CategoryOption } from "@/components/category-select";
 import { FlowAmount } from "@/components/money";
-import { formatDayMonth } from "@/lib/dates";
-import { href } from "@/lib/url";
+import { useI18n } from "@/i18n/client";
 import type { UncategorisedMerchant } from "@/server/queries/transactions";
 
 /**
@@ -22,6 +21,7 @@ export function ReviewList({
   merchants: UncategorisedMerchant[];
   categories: CategoryOption[];
 }) {
+  const { t, format, link } = useI18n();
   const [pending, startTransition] = useTransition();
 
   function assign(merchant: UncategorisedMerchant, categoryId: number | null) {
@@ -29,12 +29,12 @@ export function ReviewList({
     startTransition(async () => {
       const result = await setMerchantCategory(merchant.merchantKey, categoryId);
       if (!result.ok) {
-        toast.error(result.error);
+        toast.error(t.error(result.error));
         return;
       }
       const category = categories.find((item) => item.id === categoryId)?.name ?? "";
       toast.success(`${merchant.merchant} → ${category}`, {
-        description: `${result.data.updated} ${result.data.updated === 1 ? "transaction" : "transactions"} categorised. Future imports follow.`,
+        description: t("review.done", { count: result.data.updated }),
       });
     });
   }
@@ -48,14 +48,13 @@ export function ReviewList({
         >
           <div className="min-w-0">
             <Link
-              href={href("/transactions", { merchant: merchant.merchantKey })}
+              href={link("/transactions", { merchant: merchant.merchantKey })}
               className="truncate text-sm font-medium text-ink hover:underline"
             >
               {merchant.merchant}
             </Link>
             <p className="truncate text-[13px] text-ink-3">
-              {merchant.count} {merchant.count === 1 ? "transaction" : "transactions"} · last{" "}
-              {formatDayMonth(merchant.lastDate)}
+              {t("review.summary", { count: merchant.count, date: format.dayMonth(merchant.lastDate) })}
               {merchant.memo ?? merchant.location ? ` · ${merchant.memo ?? merchant.location}` : ""}
             </p>
           </div>
@@ -66,9 +65,9 @@ export function ReviewList({
               value={null}
               onChange={(categoryId) => assign(merchant, categoryId)}
               allowNone={false}
-              placeholder="Choose a category"
+              placeholder={t("common.chooseCategory")}
               disabled={pending}
-              label={`Category for ${merchant.merchant}`}
+              label={t("review.categoryFor", { merchant: merchant.merchant })}
             />
           </div>
         </li>

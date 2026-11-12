@@ -9,18 +9,17 @@ import { LineChart, type LineSeries } from "@/components/charts/line-chart";
 import { RankedBars } from "@/components/charts/ranked-bars";
 import { ImportForm } from "@/components/import/import-form";
 import { Figure, FlowAmount, Money } from "@/components/money";
-import { EmptyState, MonthSwitcher, PageHeader, PageSkeleton, StatTile } from "@/components/page";
+import { MonthSwitcher } from "@/components/month-switcher";
+import { EmptyState, PageHeader, PageSkeleton, StatTile } from "@/components/page";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { categoryName, merchantName } from "@/i18n/names";
+import { getI18n } from "@/i18n/server";
 import {
   addDays,
   addMonths,
   dayOfMonth,
   daysInMonth,
-  formatDate,
-  formatDayMonth,
-  formatMonthName,
-  formatRelativeDay,
   monthEnd,
   monthOf,
   monthStart,
@@ -29,20 +28,21 @@ import {
 } from "@/lib/dates";
 import { monthBounds, resolveMonth } from "@/lib/period";
 import { APP_NAME } from "@/lib/site";
-import { href, param } from "@/lib/url";
+import { param } from "@/lib/url";
 import { requestDb } from "@/server/db/request";
 import { getDataRange, listAccounts } from "@/server/queries/accounts";
 import { getDailySpending, getSpendingByCategory, getTotals } from "@/server/queries/flows";
 import { getRecurring, upcomingCharges } from "@/server/queries/recurring";
 import { countUncategorised, listTransactions } from "@/server/queries/transactions";
 
-export default function OverviewPage(props: PageProps<"/">) {
+export default async function OverviewPage(props: PageProps<"/[lang]">) {
+  const { t } = await getI18n();
   return (
     <Suspense
       fallback={
         <>
-          <PageHeader title="Overview" />
-          <PageSkeleton />
+          <PageHeader title={t("nav.overview")} />
+          <PageSkeleton label={t("common.loading")} />
         </>
       }
     >
@@ -56,20 +56,19 @@ function runningTotal(values: number[]): number[] {
   return values.map((value) => (sum += value));
 }
 
-async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
+async function Overview({ searchParams }: Pick<PageProps<"/[lang]">, "searchParams">) {
   const query = await searchParams;
   const db = await requestDb();
+  const { t, format, link } = await getI18n();
   const range = getDataRange(db);
 
   if (!range.firstDate || !range.lastDate || !range.coveredThrough) {
     return (
       <>
-        <PageHeader title={`Welcome to ${APP_NAME}`} />
+        <PageHeader title={t("overview.welcome", { app: APP_NAME })} />
         <Card>
-          <EmptyState icon={FileSpreadsheet} title="Start with your first bank export">
-            Upload the Excel export from your online banking. Your transactions are categorised
-            automatically, recurring payments are detected, and everything stays in a database file
-            on this computer.
+          <EmptyState icon={FileSpreadsheet} title={t("overview.start.title")}>
+            {t("overview.start.text")}
           </EmptyState>
           <CardBody>
             <ImportForm accounts={[]} compact />
@@ -105,12 +104,14 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
   const previousAtSameDay = comparisonDay > 0 ? previousCumulative[comparisonDay - 1] : null;
   const difference = previousAtSameDay === null ? null : totals.spending - previousAtSameDay;
 
+  const monthLabel = format.monthName(month);
+  const previousLabel = format.monthName(previous);
   const length = Math.max(daysInMonth(month), previousCumulative.length);
   const days = Array.from({ length }, (_, index) => index + 1);
   const lines: LineSeries[] = [
     {
       id: "current",
-      label: formatMonthName(month),
+      label: monthLabel,
       color: "var(--accent)",
       values: days.map((day) => (day <= daysCovered ? cumulative[day - 1] : null)),
       area: true,
@@ -120,7 +121,7 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
   if (previousCovered) {
     lines.push({
       id: "previous",
-      label: formatMonthName(previous),
+      label: previousLabel,
       color: "var(--context)",
       values: days.map((day) => previousCumulative[day - 1] ?? null),
     });
@@ -137,38 +138,38 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
   return (
     <>
       <PageHeader
-        title="Overview"
-        description={
-          running ? `Data through ${formatDate(covered)}` : `${formatMonthName(month)} ${month.slice(0, 4)}`
-        }
+        title={t("nav.overview")}
+        description={running ? t("overview.dataThrough", { date: format.date(covered) }) : format.month(month)}
       >
         <MonthSwitcher month={month} min={bounds.min} max={bounds.max} path="/" />
-        <Link href="/import" className={buttonClass({ variant: "primary" })}>
+        <Link href={link("/import")} className={buttonClass({ variant: "primary" })}>
           <Upload aria-hidden className="size-4" />
-          Import
+          {t("common.import")}
         </Link>
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <ChartFrame
           className="lg:col-span-2"
-          title={`Spent in ${formatMonthName(month)}`}
+          title={t("overview.spentIn", { month: monthLabel })}
           description={<SpendingHeadline amount={totals.spending} difference={difference} previous={previous} partial={running} />}
           legend={lines.map((line) => ({ label: line.label, color: line.color, mark: "line" as const }))}
           chart={
             <LineChart
-              labels={days.map((day) => `Day ${day}`)}
+              labels={days.map((day) => t("overview.dayLabel", { day }))}
               ticks={[1, 5, 10, 15, 20, 25, 30].filter((day) => day <= length).map((day) => ({ index: day - 1, label: String(day) }))}
               series={lines}
-              description={`Cumulative spending in ${formatMonthName(month)} by day of the month${
-                previousCovered ? `, compared with ${formatMonthName(previous)}` : ""
-              }`}
+              description={
+                previousCovered
+                  ? t("overview.chartCompared", { month: monthLabel, previous: previousLabel })
+                  : t("overview.chart", { month: monthLabel })
+              }
             />
           }
           table={
             <DataTable
-              caption="Cumulative spending by day of the month"
-              rowHeader="Day"
+              caption={t("overview.tableCaption")}
+              rowHeader={t("common.day")}
               columns={lines.map((line) => line.label)}
               rows={days.map((day, index) => ({
                 label: String(day),
@@ -177,25 +178,23 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
             />
           }
           footnote={
-            previousCovered
-              ? undefined
-              : `No comparison yet: the data starts on ${formatDate(range.firstDate)}.`
+            previousCovered ? undefined : t("overview.noComparison", { date: format.date(range.firstDate) })
           }
         />
 
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
           <StatTile
-            label={accounts.length > 1 ? "Balance, all accounts" : "Account balance"}
-            detail={balanceDate ? `as of ${formatDate(balanceDate)}` : undefined}
+            label={accounts.length > 1 ? t("overview.balanceAll") : t("overview.balance")}
+            detail={balanceDate ? t("overview.asOf", { date: format.date(balanceDate) }) : undefined}
           >
             <Figure cents={balanceTotal} />
           </StatTile>
-          <StatTile label={`Income in ${formatMonthName(month)}`}>
+          <StatTile label={t("overview.incomeIn", { month: monthLabel })}>
             <Figure cents={totals.income} />
           </StatTile>
           <StatTile
-            label="Income minus spending"
-            detail={totals.net >= 0 ? "left over this month" : "more spent than earned"}
+            label={t("common.net")}
+            detail={totals.net >= 0 ? t("overview.leftOver") : t("overview.overspent")}
           >
             <Figure cents={totals.net} />
           </StatTile>
@@ -205,22 +204,22 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader
-            title="Where it went"
-            description={`Spending by category in ${formatMonthName(month)}`}
-            action={<MoreLink href={href("/spending", { m: month })}>All spending</MoreLink>}
+            title={t("overview.whereItWent")}
+            description={t("overview.byCategoryIn", { month: monthLabel })}
+            action={<MoreLink href={link("/spending", { m: month })}>{t("overview.allSpending")}</MoreLink>}
           />
           <CardBody>
             {positiveCategories.length === 0 ? (
-              <p className="py-6 text-center text-sm text-ink-3">No spending in this month.</p>
+              <p className="py-6 text-center text-sm text-ink-3">{t("overview.noSpending")}</p>
             ) : (
               <RankedBars
                 total={positiveCategories.reduce((sum, category) => sum + category.amount, 0)}
                 items={positiveCategories.slice(0, 6).map((category) => ({
                   key: String(category.categoryId ?? "none"),
-                  label: category.name,
+                  label: categoryName(t, category),
                   icon: category.categoryId === null ? null : category.icon,
                   value: category.amount,
-                  href: href("/transactions", { m: month, category: category.categoryId ?? "none" }),
+                  href: link("/transactions", { m: month, category: category.categoryId ?? "none" }),
                 }))}
               />
             )}
@@ -229,14 +228,13 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
 
         <Card>
           <CardHeader
-            title="Coming up"
-            description="Recurring payments expected in the next 30 days"
-            action={<MoreLink href="/recurring">All recurring</MoreLink>}
+            title={t("overview.comingUp")}
+            description={t("overview.comingUpDescription")}
+            action={<MoreLink href={link("/recurring")}>{t("overview.allRecurring")}</MoreLink>}
           />
           {upcoming.length === 0 ? (
-            <EmptyState icon={CalendarClock} title="Nothing expected" className="py-8">
-              Subscriptions and bills show up here once they have been seen often enough to
-              recognise a rhythm.
+            <EmptyState icon={CalendarClock} title={t("overview.nothingExpected")} className="py-8">
+              {t("overview.nothingExpectedText")}
             </EmptyState>
           ) : (
             <ul className="divide-y divide-hairline pb-2">
@@ -244,9 +242,9 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
                 <li key={`${series.key}-${date}`} className="flex items-center gap-3 px-5 py-2.5">
                   <CategoryIcon name={series.categoryIcon} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-ink">{series.merchant}</p>
+                    <p className="truncate text-sm font-medium text-ink">{merchantName(t, series)}</p>
                     <p className="text-[13px] text-ink-3">
-                      {formatDayMonth(date)} · {formatRelativeDay(date, today)}
+                      {format.dayMonth(date)} · {format.relativeDay(date, today)}
                     </p>
                   </div>
                   <span className="text-sm tabular">
@@ -263,17 +261,18 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
-            title="Latest transactions"
-            action={<MoreLink href="/transactions">All transactions</MoreLink>}
+            title={t("overview.latest")}
+            action={<MoreLink href={link("/transactions")}>{t("overview.allTransactions")}</MoreLink>}
           />
           <ul className="divide-y divide-hairline pb-2">
             {recent.map((row) => (
               <li key={row.id} className="flex items-center gap-3 px-5 py-2.5">
                 <CategoryIcon name={row.categoryIcon} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">{row.merchant}</p>
+                  <p className="truncate text-sm font-medium text-ink">{merchantName(t, row)}</p>
                   <p className="truncate text-[13px] text-ink-3">
-                    {formatDayMonth(row.date)} · {row.categoryName ?? "Uncategorised"}
+                    {format.dayMonth(row.date)} ·{" "}
+                    {categoryName(t, { name: row.categoryName, slug: row.categorySlug })}
                   </p>
                 </div>
                 <FlowAmount cents={row.amount} muted={row.flow === "transfer"} className="text-sm" />
@@ -283,22 +282,22 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
         </Card>
 
         <Card>
-          <CardHeader title="To do" />
+          <CardHeader title={t("overview.todo")} />
           <CardBody className="space-y-4">
             {uncategorised > 0 ? (
               <div>
                 <p className="text-sm text-ink-2">
-                  <span className="font-medium text-ink">
-                    {uncategorised} {uncategorised === 1 ? "transaction has" : "transactions have"}
-                  </span>{" "}
-                  no category yet. Assign one per merchant and it sticks for future imports.
+                  {t.rich("overview.uncategorised", {
+                    count: uncategorised,
+                    b: (content) => <span className="font-medium text-ink">{content}</span>,
+                  })}
                 </p>
-                <Link href="/categories#review" className={buttonClass({ size: "sm", className: "mt-3" })}>
-                  Review now
+                <Link href={link("/categories#review")} className={buttonClass({ size: "sm", className: "mt-3" })}>
+                  {t("overview.reviewNow")}
                 </Link>
               </div>
             ) : (
-              <p className="text-sm text-ink-2">Every transaction has a category. Nicely done.</p>
+              <p className="text-sm text-ink-2">{t("overview.allCategorised")}</p>
             )}
             <Staleness lastDate={covered} today={today} />
           </CardBody>
@@ -308,7 +307,7 @@ async function Overview({ searchParams }: Pick<PageProps<"/">, "searchParams">) 
   );
 }
 
-function SpendingHeadline({
+async function SpendingHeadline({
   amount,
   difference,
   previous,
@@ -320,38 +319,52 @@ function SpendingHeadline({
   /** The month is still running, so the comparison is "at this point". */
   partial: boolean;
 }) {
+  const { t, format } = await getI18n();
+  const month = format.monthName(previous);
+
+  function comparison(difference: number) {
+    if (difference === 0) {
+      return partial ? t("overview.compare.sameSoFar", { month }) : t("overview.compare.same", { month });
+    }
+    const more = difference > 0;
+    const key = partial
+      ? more
+        ? "overview.compare.moreSoFar"
+        : "overview.compare.lessSoFar"
+      : more
+        ? "overview.compare.more"
+        : "overview.compare.less";
+    return t.rich(key, {
+      amount: <Money cents={Math.abs(difference)} whole className="font-medium text-ink" />,
+      month,
+    });
+  }
+
   return (
     <span className="mt-2 block">
       <Figure cents={amount} size="xl" className="block" />
       {difference !== null ? (
-        <span className="mt-2 block text-[13px] text-ink-2">
-          {difference === 0 ? (
-            "Exactly as much as"
-          ) : (
-            <>
-              <Money cents={Math.abs(difference)} whole className="font-medium text-ink" />{" "}
-              {difference > 0 ? "more than" : "less than"}
-            </>
-          )}{" "}
-          {partial ? `at this point in ${formatMonthName(previous)}` : `in ${formatMonthName(previous)}`}
-        </span>
+        <span className="mt-2 block text-[13px] text-ink-2">{comparison(difference)}</span>
       ) : null}
     </span>
   );
 }
 
-function Staleness({ lastDate, today }: { lastDate: string; today: string }) {
+async function Staleness({ lastDate, today }: { lastDate: string; today: string }) {
   const age = Math.round((Date.parse(today) - Date.parse(lastDate)) / 86_400_000);
   if (age <= 35) return null;
+  const { t, format, link } = await getI18n();
   return (
     <div className="border-t border-hairline pt-4">
       <p className="text-sm text-ink-2">
-        The newest transaction is from{" "}
-        <span className="font-medium text-ink">{formatDate(lastDate)}</span>. Time for a fresh export
-        from {formatMonthName(monthOf(addDays(lastDate, 1)))} onwards.
+        {t.rich("overview.stale", {
+          date: format.date(lastDate),
+          month: format.monthName(monthOf(addDays(lastDate, 1))),
+          b: (content) => <span className="font-medium text-ink">{content}</span>,
+        })}
       </p>
-      <Link href="/import" className={buttonClass({ size: "sm", className: "mt-3" })}>
-        Import
+      <Link href={link("/import")} className={buttonClass({ size: "sm", className: "mt-3" })}>
+        {t("common.import")}
       </Link>
     </div>
   );

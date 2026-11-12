@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
 
+import { UserFacingError } from "../errors";
+
 /**
  * Reads a bank export workbook into loosely typed rows.
  *
@@ -43,11 +45,9 @@ export interface SourceTable {
   rows: SourceRow[];
 }
 
-export class ImportFormatError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ImportFormatError";
-  }
+/** The file is not a bank export this app can read. */
+export class ImportFormatError extends UserFacingError {
+  override name = "ImportFormatError";
 }
 
 const HEADER_ALIASES: Record<Exclude<ColumnKey, "balance">, string[]> = {
@@ -97,9 +97,7 @@ export function readWorkbook(data: Uint8Array): SourceTable {
     // which convert to calendar dates with plain arithmetic — no time zones.
     workbook = XLSX.read(data, { type: "array", cellNF: true, cellDates: false });
   } catch {
-    throw new ImportFormatError(
-      "This file could not be read as a spreadsheet. Please upload the .xlsx export from your online banking.",
-    );
+    throw new ImportFormatError("error.notSpreadsheet");
   }
 
   for (const sheetName of workbook.SheetNames) {
@@ -108,9 +106,7 @@ export function readWorkbook(data: Uint8Array): SourceTable {
     if (table) return table;
   }
 
-  throw new ImportFormatError(
-    "No transaction table found. The export needs the columns “Buchungsdatum”, “Buchungstext” and “Betrag”.",
-  );
+  throw new ImportFormatError("error.noTransactionTable");
 }
 
 function readSheet(sheetName: string, sheet: XLSX.WorkSheet): SourceTable | null {

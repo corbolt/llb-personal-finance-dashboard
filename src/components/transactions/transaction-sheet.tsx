@@ -9,24 +9,15 @@ import { ignoreRecurring, markRecurring, resetRecurring, setExcluded, setNote } 
 import { CategorySelect, type CategoryOption } from "@/components/category-select";
 import { Button } from "@/components/ui/button";
 import { NativeSelect, Textarea } from "@/components/ui/field";
+import { useI18n } from "@/i18n/client";
+import type { MessageError } from "@/i18n/messages";
 import { cn } from "@/lib/cn";
-import { formatDate } from "@/lib/dates";
 import { formatAmount, formatMoney } from "@/lib/money";
 import type { Cadence } from "@/server/import/merchants";
 
 import type { TransactionItem } from "./types";
 
-const CADENCE_OPTIONS: Array<{ value: Cadence; label: string }> = [
-  { value: "weekly", label: "Weekly" },
-  { value: "biweekly", label: "Every 2 weeks" },
-  { value: "monthly", label: "Monthly" },
-  { value: "quarterly", label: "Quarterly" },
-  { value: "semiannual", label: "Every 6 months" },
-  { value: "yearly", label: "Yearly" },
-];
-
-const cadenceLabel = (cadence: Cadence) =>
-  CADENCE_OPTIONS.find((option) => option.value === cadence)?.label.toLowerCase() ?? cadence;
+const CADENCES: Cadence[] = ["weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly"];
 
 /** Side panel with everything known about one booking, and the ways to change it. */
 export function TransactionSheet({
@@ -76,6 +67,7 @@ function SheetBody({
   accountName?: string;
   onCategoryChange: (row: TransactionItem, categoryId: number | null, scope: "one" | "merchant") => void;
 }) {
+  const { t, format } = useI18n();
   const [scope, setScope] = useState<"one" | "merchant">("one");
   const [note, setNoteDraft] = useState(row.note ?? "");
   const [cadence, setCadence] = useState<Cadence>("monthly");
@@ -84,11 +76,11 @@ function SheetBody({
   const direction = row.amount < 0 ? "out" : "in";
   const noteChanged = note.trim() !== (row.note ?? "");
 
-  function run(action: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) {
+  function run(action: () => Promise<{ ok: true } | { ok: false; error: MessageError }>, done: string) {
     startTransition(async () => {
       const result = await action();
       if (result.ok) toast.success(done);
-      else toast.error(result.error);
+      else toast.error(t.error(result.error));
     });
   }
 
@@ -98,12 +90,12 @@ function SheetBody({
         <div className="min-w-0">
           <Dialog.Title className="truncate text-base font-semibold text-ink">{row.merchant}</Dialog.Title>
           <Dialog.Description className="mt-0.5 text-[13px] text-ink-2">
-            {formatDate(row.date)}
+            {format.date(row.date)}
             {row.location ? ` · ${row.location}` : ""}
           </Dialog.Description>
         </div>
         <Dialog.Close
-          aria-label="Close"
+          aria-label={t("common.close")}
           className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-wash hover:text-ink"
         >
           <X aria-hidden className="size-4" />
@@ -123,22 +115,24 @@ function SheetBody({
           </p>
           {row.originalAmount !== null && row.originalCurrency ? (
             <p className="mt-1 text-[13px] text-ink-2">
-              {formatMoney(Math.abs(row.originalAmount), row.originalCurrency)} at{" "}
-              {(Math.abs(row.amount) / Math.abs(row.originalAmount)).toFixed(4)} {row.currency}/
-              {row.originalCurrency}
+              {t("sheet.exchange", {
+                amount: formatMoney(Math.abs(row.originalAmount), row.originalCurrency),
+                rate: (Math.abs(row.amount) / Math.abs(row.originalAmount)).toFixed(4),
+                pair: `${row.currency}/${row.originalCurrency}`,
+              })}
             </p>
           ) : null}
         </div>
 
-        <Section title="Category">
+        <Section title={t("common.category")}>
           <CategorySelect
             categories={categories}
             value={row.categoryId}
             onChange={(categoryId) => onCategoryChange(row, categoryId, scope)}
-            label="Category"
+            label={t("common.category")}
           />
           <fieldset className="mt-3 space-y-1.5 text-[13px] text-ink-2">
-            <legend className="sr-only">Apply the category to</legend>
+            <legend className="sr-only">{t("sheet.applyTo")}</legend>
             <label className="flex items-center gap-2">
               <input
                 type="radio"
@@ -147,7 +141,7 @@ function SheetBody({
                 onChange={() => setScope("one")}
                 className="accent-(--accent)"
               />
-              Only this transaction
+              {t("sheet.onlyThis")}
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -158,54 +152,57 @@ function SheetBody({
                 className="accent-(--accent)"
               />
               <span>
-                Everything from <span className="text-ink">{row.merchant}</span>, including future imports
+                {t.rich("sheet.everythingFrom", {
+                  merchant: row.merchant,
+                  b: (content) => <span className="text-ink">{content}</span>,
+                })}
               </span>
             </label>
           </fieldset>
           {row.categorySource === "auto" ? (
-            <p className="mt-2 text-xs text-ink-3">Categorised automatically.</p>
+            <p className="mt-2 text-xs text-ink-3">{t("sheet.categorisedAuto")}</p>
           ) : row.categorySource === "rule" ? (
-            <p className="mt-2 text-xs text-ink-3">Categorised by one of your rules.</p>
+            <p className="mt-2 text-xs text-ink-3">{t("sheet.categorisedByRule")}</p>
           ) : null}
         </Section>
 
-        <Section title="Recurring">
+        <Section title={t("sheet.recurring")}>
           {row.recurringDecision === "ignore" ? (
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[13px] text-ink-2">You marked this merchant as not recurring.</p>
+              <p className="text-[13px] text-ink-2">{t("sheet.markedNotRecurring")}</p>
               <Button
                 size="sm"
                 disabled={pending}
-                onClick={() => run(() => resetRecurring(row.merchantKey, direction), "Recurring detection restored")}
+                onClick={() => run(() => resetRecurring(row.merchantKey, direction), t("sheet.detectionRestored"))}
               >
-                Undo
+                {t("common.undo")}
               </Button>
             </div>
           ) : row.recurringCadence ? (
             <div className="flex items-center justify-between gap-3">
               <p className="flex items-center gap-2 text-[13px] text-ink-2">
                 <Repeat aria-hidden className="size-3.5" />
-                Repeats {cadenceLabel(row.recurringCadence)}
+                {t(`repeats.${row.recurringCadence}`)}
               </p>
               <Button
                 size="sm"
                 disabled={pending}
-                onClick={() => run(() => ignoreRecurring(row.merchantKey, direction), "Marked as not recurring")}
+                onClick={() => run(() => ignoreRecurring(row.merchantKey, direction), t("sheet.nowNotRecurring"))}
               >
-                Not recurring
+                {t("recurring.notRecurring")}
               </Button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
               <NativeSelect
-                aria-label="How often it repeats"
+                aria-label={t("sheet.howOften")}
                 value={cadence}
                 onChange={(event) => setCadence(event.target.value as Cadence)}
                 className="h-8 flex-1 text-[13px]"
               >
-                {CADENCE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                {CADENCES.map((option) => (
+                  <option key={option} value={option}>
+                    {t(`cadence.${option}`)}
                   </option>
                 ))}
               </NativeSelect>
@@ -213,42 +210,45 @@ function SheetBody({
                 size="sm"
                 disabled={pending}
                 onClick={() =>
-                  run(() => markRecurring(row.merchantKey, direction, cadence), `${row.merchant} marked as recurring`)
+                  run(
+                    () => markRecurring(row.merchantKey, direction, cadence),
+                    t("sheet.nowRecurring", { merchant: row.merchant }),
+                  )
                 }
               >
-                Mark as recurring
+                {t("sheet.markRecurring")}
               </Button>
             </div>
           )}
         </Section>
 
-        <Section title="Note">
+        <Section title={t("sheet.note")}>
           <Textarea
             value={note}
             onChange={(event) => setNoteDraft(event.target.value)}
             rows={2}
             maxLength={500}
-            placeholder="Add a note…"
+            placeholder={t("sheet.addNote")}
             className="w-full resize-none"
           />
           {noteChanged ? (
             <div className="mt-2 flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={() => setNoteDraft(row.note ?? "")}>
-                Discard
+                {t("sheet.discard")}
               </Button>
               <Button
                 size="sm"
                 variant="primary"
                 disabled={pending}
-                onClick={() => run(() => setNote(row.id, note), "Note saved")}
+                onClick={() => run(() => setNote(row.id, note), t("sheet.noteSaved"))}
               >
-                Save note
+                {t("sheet.saveNote")}
               </Button>
             </div>
           ) : null}
         </Section>
 
-        <Section title="Counting">
+        <Section title={t("sheet.counting")}>
           <label className="flex items-start gap-2.5 text-[13px] text-ink-2">
             <input
               type="checkbox"
@@ -257,37 +257,35 @@ function SheetBody({
               onChange={(event) =>
                 run(
                   () => setExcluded(row.id, event.target.checked),
-                  event.target.checked ? "Excluded from totals" : "Included in totals again",
+                  event.target.checked ? t("sheet.nowExcluded") : t("sheet.nowIncluded"),
                 )
               }
               className="mt-0.5 accent-(--accent)"
             />
             <span>
-              Leave this transaction out of spending, income and budgets
+              {t("sheet.leaveOut")}
               {row.flow === "transfer" ? (
-                <span className="block text-xs text-ink-3">
-                  Transfers between your own accounts never count.
-                </span>
+                <span className="block text-xs text-ink-3">{t("sheet.transfersNeverCount")}</span>
               ) : null}
             </span>
           </label>
         </Section>
 
-        <Section title="Details">
+        <Section title={t("sheet.details")}>
           <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
-            <Detail label="Booked">
-              {formatDate(row.bookedAt.slice(0, 10))}
+            <Detail label={t("sheet.booked")}>
+              {format.date(row.bookedAt.slice(0, 10))}
               {row.bookedAt.slice(11) !== "00:00:00" ? `, ${row.bookedAt.slice(11, 16)}` : ""}
             </Detail>
-            {row.valueDate ? <Detail label="Value date">{formatDate(row.valueDate)}</Detail> : null}
-            {row.cardLast4 ? <Detail label="Card">•••• {row.cardLast4}</Detail> : null}
-            {row.memo ? <Detail label="Purpose">{row.memo}</Detail> : null}
-            {accountName ? <Detail label="Account">{accountName}</Detail> : null}
-            {row.reference ? <Detail label="Reference">{row.reference}</Detail> : null}
+            {row.valueDate ? <Detail label={t("sheet.valueDate")}>{format.date(row.valueDate)}</Detail> : null}
+            {row.cardLast4 ? <Detail label={t("sheet.card")}>•••• {row.cardLast4}</Detail> : null}
+            {row.memo ? <Detail label={t("sheet.purpose")}>{row.memo}</Detail> : null}
+            {accountName ? <Detail label={t("common.account")}>{accountName}</Detail> : null}
+            {row.reference ? <Detail label={t("sheet.reference")}>{row.reference}</Detail> : null}
           </dl>
         </Section>
 
-        <Section title="Bank statement text">
+        <Section title={t("sheet.statementText")}>
           <pre className="rounded-lg bg-wash px-3 py-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap text-ink-2">
             {row.rawText}
           </pre>

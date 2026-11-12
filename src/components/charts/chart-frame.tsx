@@ -3,6 +3,7 @@
 import { ChartLine, Table2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 
 export interface LegendItem {
@@ -52,8 +53,10 @@ export function ChartFrame({
   footnote?: ReactNode;
   className?: string;
 }) {
+  const { t } = useI18n();
   const [view, setView] = useState<"chart" | "table">("chart");
   const showTable = view === "table";
+  const switchLabel = showTable ? t("chart.showAsChart") : t("chart.showAsTable");
 
   return (
     <section className={cn("rounded-xl border border-line bg-surface", className)}>
@@ -66,7 +69,7 @@ export function ChartFrame({
           type="button"
           onClick={() => setView(showTable ? "chart" : "table")}
           aria-pressed={showTable}
-          title={showTable ? "Show as chart" : "Show as table"}
+          title={switchLabel}
           className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-wash hover:text-ink"
         >
           {showTable ? (
@@ -74,7 +77,7 @@ export function ChartFrame({
           ) : (
             <Table2 aria-hidden className="size-4" strokeWidth={1.75} />
           )}
-          <span className="sr-only">{showTable ? "Show as chart" : "Show as table"}</span>
+          <span className="sr-only">{switchLabel}</span>
         </button>
       </header>
       <div className="px-5 pb-5">

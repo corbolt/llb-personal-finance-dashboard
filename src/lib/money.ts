@@ -76,16 +76,23 @@ export function splitAmount(cents: Cents): { sign: string; whole: string; fracti
   };
 }
 
+/** How a language writes thousands and millions on an axis: `7.5K`, `7.5 Tsd.` */
+export interface CompactUnits {
+  thousands: (value: string) => string;
+  millions: (value: string) => string;
+}
+
 /**
  * Axis tick label: written in full below 10,000 and compact from there on, so
- * every tick on one axis uses the same style.
+ * every tick on one axis uses the same style. The compact units come from the
+ * interface language — use `format.axisValue` from `src/i18n` in components.
  */
-export function formatAxisValue(units: number, axisMax: number): string {
+export function formatAxisValue(units: number, axisMax: number, compact: CompactUnits): string {
   const abs = Math.abs(units);
   const sign = units < 0 ? MINUS : "";
   if (Math.abs(axisMax) < 10_000) return `${sign}${group(String(Math.round(abs)))}`;
-  if (abs >= 1_000_000) return `${sign}${trimZero(abs / 1_000_000)}M`;
-  if (abs >= 1_000) return `${sign}${trimZero(abs / 1_000)}K`;
+  if (abs >= 1_000_000) return `${sign}${compact.millions(trimZero(abs / 1_000_000))}`;
+  if (abs >= 1_000) return `${sign}${compact.thousands(trimZero(abs / 1_000))}`;
   return `${sign}${Math.round(abs)}`;
 }
 

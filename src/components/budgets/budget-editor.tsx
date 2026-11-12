@@ -6,7 +6,11 @@ import { toast } from "sonner";
 import { setBudget } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
+import { useI18n } from "@/i18n/client";
 import { formatAmount, parseMoneyInput } from "@/lib/money";
+
+/** Budgets are kept in the currency the accounts are in. */
+const CURRENCY = "CHF";
 
 /**
  * Inline control to set, change or remove a category's monthly budget.
@@ -25,6 +29,7 @@ export function BudgetEditor({
   /** Amount to prefill when there is no budget yet. */
   suggestion?: number | null;
 }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [pending, startTransition] = useTransition();
@@ -39,10 +44,14 @@ export function BudgetEditor({
     startTransition(async () => {
       const result = await setBudget(categoryId, amount);
       if (!result.ok) {
-        toast.error(result.error);
+        toast.error(t.error(result.error));
         return;
       }
-      toast.success(amount === null ? `Budget for ${categoryName} removed` : `Budget for ${categoryName} saved`);
+      toast.success(
+        amount === null
+          ? t("budgets.removed", { category: categoryName })
+          : t("budgets.saved", { category: categoryName }),
+      );
       setEditing(false);
     });
   }
@@ -50,7 +59,7 @@ export function BudgetEditor({
   if (!editing) {
     return (
       <Button size="sm" variant={budget === null ? "secondary" : "ghost"} onClick={open}>
-        {budget === null ? "Set budget" : "Edit"}
+        {budget === null ? t("budgets.set") : t("common.edit")}
       </Button>
     );
   }
@@ -67,9 +76,11 @@ export function BudgetEditor({
       }}
     >
       <label className="relative">
-        <span className="sr-only">Monthly budget for {categoryName} in CHF</span>
+        <span className="sr-only">
+          {t("budgets.inputLabel", { category: categoryName, currency: CURRENCY })}
+        </span>
         <span aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-ink-3">
-          CHF
+          {CURRENCY}
         </span>
         <Input
           autoFocus
@@ -83,15 +94,15 @@ export function BudgetEditor({
         />
       </label>
       <Button type="submit" size="sm" variant="primary" disabled={pending || !valid}>
-        Save
+        {t("common.save")}
       </Button>
       {budget !== null ? (
         <Button size="sm" variant="ghost" disabled={pending} onClick={() => save(null)}>
-          Remove
+          {t("common.remove")}
         </Button>
       ) : null}
       <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-        Cancel
+        {t("common.cancel")}
       </Button>
     </form>
   );
