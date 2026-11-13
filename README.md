@@ -115,10 +115,10 @@ covered by your data.
 - **Backup:** stop the app and copy the `data` folder.
 - The server listens on `127.0.0.1` only and additionally refuses requests that
   were not addressed to localhost, so other devices and other websites cannot
-  read your data. To reach it from another device on purpose, run
-  `npx next start --hostname 0.0.0.0` and list the allowed host names in
-  `ALLOWED_HOSTS` (comma separated). There is no login — only do that on a
-  network you trust.
+  read your data. To reach it from another device on purpose, copy
+  `.env.example` to `.env`, set `HOST` to the machine's address in the network
+  (e.g. `192.168.178.3`) and list the same address in `ALLOWED_HOSTS`, then start
+  with `./start.sh`. There is no login — only do that on a network you trust.
 - `.gitignore` excludes the database and all spreadsheet files, so bank data
   does not end up in a repository by accident.
 
