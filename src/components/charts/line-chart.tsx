@@ -24,8 +24,8 @@ export interface LineSeries {
 export interface LineChartProps {
   /** Name of each x position, shown in the tooltip. */
   labels: string[];
-  /** The x positions that get an axis label. */
-  ticks: Array<{ index: number; label: string }>;
+  /** The x positions that get an axis label; `className` can hide one on narrow screens. */
+  ticks: Array<{ index: number; label: string; className?: string }>;
   series: LineSeries[];
   currency?: string;
   /** Height of the plot area in pixels (axis labels come on top). */
@@ -100,7 +100,7 @@ export function LineChart({
         {scale.ticks.map((tick) => (
           <span
             key={tick}
-            className="absolute right-0 -translate-y-1/2 leading-none"
+            className="absolute right-0 -translate-y-1/2 leading-none whitespace-nowrap"
             style={{ top: `${fromTop(scale, tick)}%` }}
           >
             {format.axisValue(tick, scale.max)}
@@ -253,6 +253,7 @@ export function LineChart({
               className={cn(
                 "absolute whitespace-nowrap leading-none",
                 left <= 2 ? "" : left >= 98 ? "-translate-x-full" : "-translate-x-1/2",
+                tick.className,
               )}
               style={{ left: `${left}%` }}
             >

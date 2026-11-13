@@ -42,6 +42,7 @@ export function ChartFrame({
   chart,
   table,
   footnote,
+  action,
   className,
 }: {
   title: string;
@@ -51,6 +52,8 @@ export function ChartFrame({
   chart: ReactNode;
   table: ReactNode;
   footnote?: ReactNode;
+  /** A control next to the chart/table switch, e.g. an account picker. */
+  action?: ReactNode;
   className?: string;
 }) {
   const { t } = useI18n();
@@ -60,25 +63,28 @@ export function ChartFrame({
 
   return (
     <section className={cn("rounded-xl border border-line bg-surface", className)}>
-      <header className="flex items-start justify-between gap-4 px-5 pt-4 pb-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-ink">{title}</h2>
-          {description ? <p className="mt-0.5 text-[13px] text-ink-2">{description}</p> : null}
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-5 pt-4 pb-3">
+        <h2 className="self-center text-sm font-semibold text-ink">{title}</h2>
+        <div className="row-span-1 flex items-center gap-2 sm:row-span-2 sm:self-start">
+          {action}
+          <button
+            type="button"
+            onClick={() => setView(showTable ? "chart" : "table")}
+            aria-pressed={showTable}
+            title={switchLabel}
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-wash hover:text-ink"
+          >
+            {showTable ? (
+              <ChartLine aria-hidden className="size-4" strokeWidth={1.75} />
+            ) : (
+              <Table2 aria-hidden className="size-4" strokeWidth={1.75} />
+            )}
+            <span className="sr-only">{switchLabel}</span>
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setView(showTable ? "chart" : "table")}
-          aria-pressed={showTable}
-          title={switchLabel}
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-3 transition-colors hover:bg-wash hover:text-ink"
-        >
-          {showTable ? (
-            <ChartLine aria-hidden className="size-4" strokeWidth={1.75} />
-          ) : (
-            <Table2 aria-hidden className="size-4" strokeWidth={1.75} />
-          )}
-          <span className="sr-only">{switchLabel}</span>
-        </button>
+        {description ? (
+          <p className="col-span-2 mt-0.5 text-[13px] text-ink-2 sm:col-span-1">{description}</p>
+        ) : null}
       </header>
       <div className="px-5 pb-5">
         {showTable ? (

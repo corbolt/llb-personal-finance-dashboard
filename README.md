@@ -13,7 +13,7 @@ It was built against the transaction export of **LLB Online Banking**
 
 | Page | What it shows |
 | --- | --- |
-| **Overview** | Spending this month against last month day by day, balance, income, top categories, upcoming recurring payments, latest transactions |
+| **Overview** | Spending this month against last month day by day, balance through the year (all accounts or one), income, top categories, upcoming recurring payments, latest transactions |
 | **Transactions** | Every booking, searchable and filterable; change a category in place or open a booking for details, notes and exclusion |
 | **Spending** | By category, by merchant, day by day and month by month, for one month or a longer period |
 | **Recurring** | Detected subscriptions, bills and regular income, what they cost per month and year, and what is due next |

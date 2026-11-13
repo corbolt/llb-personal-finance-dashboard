@@ -1,4 +1,4 @@
-import type { IsoDate } from "../../lib/dates";
+import { addDays, type IsoDate } from "../../lib/dates";
 import type { Db } from "../db/database";
 
 export interface AccountSummary {
@@ -85,6 +85,59 @@ export function getBalanceSeries(db: Db, accountId: number): BalancePoint[] {
      ORDER BY date`,
     [accountId, accountId],
   );
+}
+
+export interface AccountBalances {
+  id: number;
+  name: string;
+  currency: string;
+  /** Closing balance per day of `YearBalances.days`; `null` before the first booking and after `through`. */
+  values: Array<number | null>;
+}
+
+export interface YearBalances {
+  /** Every day of the year, 1 January to 31 December. */
+  days: IsoDate[];
+  /** The accounts whose exports carry balances, in the order of `listAccounts`. */
+  accounts: AccountBalances[];
+  /** Sum of all accounts on the days for which every one of them has a balance. */
+  total: Array<number | null>;
+}
+
+/**
+ * Closing balance of every day of a year, per account and for all accounts
+ * together. A day without bookings keeps the previous day's balance, up to
+ * `through` — the day the data reaches; later days are left empty.
+ */
+export function getYearBalances(db: Db, year: string, through: IsoDate): YearBalances {
+  const days: IsoDate[] = [];
+  for (let day = `${year}-01-01`; day.startsWith(year); day = addDays(day, 1)) days.push(day);
+
+  const accounts = listAccounts(db)
+    .filter((account) => account.balance !== null)
+    .map(({ id, name, currency }): AccountBalances => {
+      const series = getBalanceSeries(db, id);
+      let next = 0;
+      let current: number | null = null;
+      const values = days.map((day) => {
+        while (next < series.length && series[next].date <= day) current = series[next++].balance;
+        return day > through ? null : current;
+      });
+      return { id, name, currency, values };
+    });
+
+  const total = days.map((_, index) => {
+    if (accounts.length === 0) return null;
+    let sum = 0;
+    for (const account of accounts) {
+      const value = account.values[index];
+      if (value === null) return null;
+      sum += value;
+    }
+    return sum;
+  });
+
+  return { days, accounts, total };
 }
 
 export interface BalanceGap {

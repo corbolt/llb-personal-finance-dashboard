@@ -2,6 +2,7 @@ import { ArrowRight, CalendarClock, FileSpreadsheet, Upload } from "lucide-react
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { AccountSelect } from "@/components/account-select";
 import { CategoryIcon } from "@/components/category-icon";
 import { ChartFrame } from "@/components/charts/chart-frame";
 import { DataTable } from "@/components/charts/data-table";
@@ -22,15 +23,17 @@ import {
   daysInMonth,
   monthEnd,
   monthOf,
+  monthRange,
   monthStart,
   todayIso,
+  type IsoDate,
   type IsoMonth,
 } from "@/lib/dates";
 import { monthBounds, resolveMonth } from "@/lib/period";
 import { APP_NAME } from "@/lib/site";
 import { param } from "@/lib/url";
 import { requestDb } from "@/server/db/request";
-import { getDataRange, listAccounts } from "@/server/queries/accounts";
+import { getDataRange, getYearBalances, listAccounts } from "@/server/queries/accounts";
 import { getDailySpending, getSpendingByCategory, getTotals, savingsRate } from "@/server/queries/flows";
 import { getRecurring, upcomingCharges } from "@/server/queries/recurring";
 import { countUncategorised, listTransactions } from "@/server/queries/transactions";
@@ -230,6 +233,8 @@ async function Overview({ searchParams }: Pick<PageProps<"/[lang]">, "searchPara
         </div>
       </div>
 
+      <YearBalance year={month.slice(0, 4)} through={covered} account={param(query.account)} month={param(query.m)} />
+
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader
@@ -333,6 +338,144 @@ async function Overview({ searchParams }: Pick<PageProps<"/[lang]">, "searchPara
         </Card>
       </div>
     </>
+  );
+}
+
+/**
+ * The balance through a whole year: every account together, or the one
+ * picked in the card. The table lists the balance at the end of each month.
+ */
+async function YearBalance({
+  year,
+  through,
+  account: requested,
+  month,
+}: {
+  year: string;
+  /** The day the data reaches. */
+  through: IsoDate;
+  /** The `account` search param. */
+  account: string | undefined;
+  /** The `m` search param, kept when switching accounts. */
+  month: string | undefined;
+}) {
+  const db = await requestDb();
+  const { t, format } = await getI18n();
+  const balances = getYearBalances(db, year, through);
+  const title = t("overview.balanceIn", { year });
+
+  const anyBalance = balances.accounts.some((account) => account.values.some((value) => value !== null));
+  const selected = balances.accounts.find((account) => String(account.id) === requested);
+  const several = balances.accounts.length > 1;
+  const values = selected ? selected.values : balances.total;
+  const currency = selected?.currency ?? balances.accounts[0]?.currency;
+  const label = selected?.name ?? (several ? t("overview.balanceTotal") : balances.accounts[0]?.name ?? "");
+  const picker = several ? (
+    <AccountSelect
+      accounts={balances.accounts.map(({ id, name }) => ({ id, name }))}
+      value={selected ? String(selected.id) : ""}
+      path="/"
+      query={{ m: month }}
+    />
+  ) : undefined;
+
+  if (!values.some((value) => value !== null)) {
+    return (
+      <Card className="mt-4">
+        <CardHeader title={title} action={picker} />
+        <CardBody>
+          <p className="text-sm text-ink-2">
+            {anyBalance
+              ? t("overview.balanceMissing", { account: label, year })
+              : t.rich("overview.balanceNone", { year, em: (content) => <em>{content}</em> })}
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  const first = values.findIndex((value) => value !== null);
+  const last = values.findLastIndex((value) => value !== null);
+  const latest = values[last]!;
+  const change = first >= 0 && last > first ? latest - values[first]! : null;
+  const firstDay = balances.days[first];
+  const lastMonth = balances.days[last].slice(0, 7);
+
+  // The total starts later than the year's data when an account was added later.
+  const totalStart = balances.total.findIndex((value) => value !== null);
+  const accountsStart = Math.min(
+    ...balances.accounts.map((account) => {
+      const index = account.values.findIndex((value) => value !== null);
+      return index < 0 ? Infinity : index;
+    }),
+  );
+  const totalStartsLate = !selected && several && totalStart > accountsStart;
+
+  // Balance at the end of each month, or on the last day with data in a running month.
+  const months = monthRange(`${year}-01`, lastMonth);
+  const atMonthEnd = (series: Array<number | null>, month: IsoMonth) =>
+    series[Math.min(balances.days.indexOf(monthEnd(month)), last)] ?? null;
+  const columns = selected
+    ? [{ label: selected.name, values: selected.values }]
+    : [
+        ...balances.accounts.map((account) => ({ label: account.name, values: account.values })),
+        ...(several ? [{ label: t("overview.balanceTotal"), values: balances.total }] : []),
+      ];
+
+  return (
+    <ChartFrame
+      className="mt-4"
+      title={title}
+      description={
+        <span className="mt-2 block">
+          <Figure cents={latest} currency={currency} size="xl" className="block" />
+          <span className="mt-2 block text-[13px] text-ink-2">
+            {label} · {t("overview.asOf", { date: format.date(balances.days[last]) })}
+            {change === null ? null : (
+              <span className="block">
+                {change === 0
+                  ? t("overview.balanceSame", { date: format.date(firstDay) })
+                  : t.rich(change > 0 ? "overview.balanceUp" : "overview.balanceDown", {
+                      amount: (
+                        <Money cents={Math.abs(change)} currency={currency} whole className="font-medium text-ink" />
+                      ),
+                      date: format.date(firstDay),
+                    })}
+              </span>
+            )}
+          </span>
+        </span>
+      }
+      action={picker}
+      chart={
+        <LineChart
+          labels={balances.days.map((day) => format.date(day))}
+          ticks={months
+            .concat(monthRange(addMonths(lastMonth, 1), `${year}-12`))
+            .map((month) => ({
+              index: balances.days.indexOf(monthStart(month)),
+              label: format.monthShort(month),
+              // every quarter on narrow screens
+              className: Number(month.slice(5, 7)) % 3 === 1 ? undefined : "max-sm:hidden",
+            }))}
+          series={[{ id: "balance", label, color: "var(--context)", values, area: true, labelEnd: true }]}
+          currency={currency}
+          description={`${t("overview.balanceChart", { year })}: ${label}`}
+        />
+      }
+      table={
+        <DataTable
+          caption={t("overview.balanceTable", { year })}
+          rowHeader={t("common.month")}
+          columns={columns.map((column) => column.label)}
+          rows={months.map((month) => ({
+            label: format.month(month),
+            values: columns.map((column) => atMonthEnd(column.values, month)),
+          }))}
+        />
+      }
+      footnote={totalStartsLate ? t("overview.balanceTotalFrom", { date: format.date(balances.days[totalStart]) }) : undefined}
+    />
   );
 }
 

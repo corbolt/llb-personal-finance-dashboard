@@ -19,7 +19,14 @@ import {
   updateCategory,
   UserError,
 } from "../mutations";
-import { findBalanceGaps, getBalanceSeries, getDataRange, listAccounts, listImports } from "./accounts";
+import {
+  findBalanceGaps,
+  getBalanceSeries,
+  getDataRange,
+  getYearBalances,
+  listAccounts,
+  listImports,
+} from "./accounts";
 import { getBudgetOverview } from "./budgets";
 import { listCategories, listCategoriesWithUsage, listRules } from "./categories";
 import {
@@ -259,6 +266,48 @@ describe("accounts", () => {
     });
     expect(getBalanceSeries(other, 1)).toEqual([{ date: "2026-05-04", balance: 120000 }]);
     expect(listAccounts(other)[0].balance).toBe(120000);
+  });
+
+  it("carries the balance of each account through the year", () => {
+    const year = getYearBalances(db, "2026", "2026-03-31");
+    expect(year.days).toHaveLength(365);
+    expect(year.days[0]).toBe("2026-01-01");
+    expect(year.days.at(-1)).toBe("2026-12-31");
+    const at = (day: string) => year.days.indexOf(day);
+
+    const [main] = year.accounts;
+    expect(year.accounts).toHaveLength(1);
+    expect(main.values[at("2026-02-24")]).toBeNull();
+    expect(main.values[at("2026-02-25")]).toBe(600000);
+    // no booking on 1 March: the balance of 27 February carries over
+    expect(main.values[at("2026-03-01")]).toBe(410000);
+    expect(main.values[at("2026-03-31")]).toBe(663000);
+    // beyond the data
+    expect(main.values[at("2026-04-01")]).toBeNull();
+    expect(year.total).toEqual(main.values);
+
+    expect(getYearBalances(db, "2027", "2026-03-31").total.every((value) => value === null)).toBe(true);
+  });
+
+  it("adds up all accounts once each of them has a balance", () => {
+    const savings = db.run("INSERT INTO accounts (name) VALUES ('Savings')").lastInsertRowid;
+    ingestExport(db, {
+      filename: "savings.xlsx",
+      accountId: savings,
+      data: buildExport(
+        [{ reference: 901, bookedAt: "2026-03-05T11:00:00", text: "E-Banking Kontoübertrag\nAuftragsnummer: 901", amount: 400 }],
+        { openingBalance: 2000 },
+      ),
+    });
+    const year = getYearBalances(db, "2026", "2026-03-31");
+    const at = (day: string) => year.days.indexOf(day);
+
+    expect(year.accounts.map((account) => account.id)).toEqual([listAccounts(db)[0].id, Number(savings)]);
+    expect(year.accounts[1].values[at("2026-03-05")]).toBe(240000);
+    // before the savings account has any booking, there is no total
+    expect(year.total[at("2026-03-04")]).toBeNull();
+    expect(year.total[at("2026-03-05")]).toBe(year.accounts[0].values[at("2026-03-05")]! + 240000);
+    expect(year.total[at("2026-03-31")]).toBe(663000 + 240000);
   });
 
   it("finds no gaps in a complete history", () => {
