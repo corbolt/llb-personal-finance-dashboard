@@ -47,13 +47,15 @@ export interface DataRange {
   transactionCount: number;
 }
 
-/** The span of dates for which there is any data at all. */
-export function getDataRange(db: Db): DataRange {
+/** The span of dates for which there is any data at all — in one account, if given. */
+export function getDataRange(db: Db, accountId?: number): DataRange {
   const row = db.get<DataRange>(
     `SELECT MIN(date) AS firstDate, MAX(date) AS lastDate,
             MAX(MAX(date), MAX(substr(booked_at, 1, 10))) AS coveredThrough,
             COUNT(*) AS transactionCount
-     FROM transactions`,
+     FROM transactions
+     ${accountId === undefined ? "" : "WHERE account_id = ?"}`,
+    accountId === undefined ? [] : [accountId],
   );
   return row ?? { firstDate: null, lastDate: null, coveredThrough: null, transactionCount: 0 };
 }

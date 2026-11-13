@@ -202,6 +202,7 @@ export const en = {
   "overview.compare.lessSoFar": "{amount} less than at this point in {month}",
   "overview.balance": "Account balance",
   "overview.balanceAll": "Balance, all accounts",
+  "overview.balanceByAccount": "Balance by account",
   "overview.asOf": "as of {date}",
   "overview.incomeIn": "Income in {month}",
   "overview.leftOver": "left over this month",

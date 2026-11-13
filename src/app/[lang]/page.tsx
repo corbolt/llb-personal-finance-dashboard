@@ -188,6 +188,29 @@ async function Overview({ searchParams }: Pick<PageProps<"/[lang]">, "searchPara
             detail={balanceDate ? t("overview.asOf", { date: format.date(balanceDate) }) : undefined}
           >
             <Figure cents={balanceTotal} />
+            {accounts.length > 1 ? (
+              <ul aria-label={t("overview.balanceByAccount")} className="mt-3 space-y-1.5 border-t border-hairline pt-3">
+                {accounts.map((account) => (
+                  <li key={account.id} className="flex items-baseline justify-between gap-3 text-[13px]">
+                    <Link
+                      href={link("/transactions", { account: account.id })}
+                      className="min-w-0 truncate text-ink-2 transition-colors hover:text-ink"
+                    >
+                      {account.name}
+                    </Link>
+                    {account.balance === null ? (
+                      <span className="text-ink-3">—</span>
+                    ) : (
+                      <Money
+                        cents={account.balance}
+                        currency={account.currency}
+                        className="text-ink tabular"
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </StatTile>
           <StatTile label={t("overview.incomeIn", { month: monthLabel })}>
             <Figure cents={totals.income} />

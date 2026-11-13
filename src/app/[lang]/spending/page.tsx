@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { AccountSelect } from "@/components/account-select";
 import { CategoryIcon } from "@/components/category-icon";
 import { ChartFrame } from "@/components/charts/chart-frame";
 import { ColumnChart } from "@/components/charts/column-chart";
@@ -31,7 +32,7 @@ import {
 import { monthBounds, resolveMonth } from "@/lib/period";
 import { param } from "@/lib/url";
 import { requestDb } from "@/server/db/request";
-import { getDataRange } from "@/server/queries/accounts";
+import { getDataRange, listAccounts } from "@/server/queries/accounts";
 import {
   getDailySpending,
   getIncomeByCategory,
@@ -76,7 +77,11 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
   const query = await searchParams;
   const db = await requestDb();
   const { t, format, link } = await getI18n();
-  const data = getDataRange(db);
+  // only accounts with bookings can be looked at on their own
+  const accounts = listAccounts(db).filter((account) => account.transactionCount > 0);
+  const account = accounts.find((candidate) => String(candidate.id) === param(query.account));
+  const accountId = account?.id;
+  const data = getDataRange(db, accountId);
 
   if (!data.firstDate || !data.lastDate || !data.coveredThrough) {
     return (
@@ -119,26 +124,30 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
   const coveredTo = to > covered ? covered : to;
   const coveredDays = Math.max(1, diffDays(coveredFrom, coveredTo) + 1);
 
-  const totals = getTotals(db, from, to);
-  const categories = getSpendingByCategory(db, from, to);
-  const income = getIncomeByCategory(db, from, to);
-  const merchants = getTopMerchants(db, from, to, 10);
+  const totals = getTotals(db, from, to, accountId);
+  const categories = getSpendingByCategory(db, from, to, accountId);
+  const income = getIncomeByCategory(db, from, to, accountId);
+  const merchants = getTopMerchants(db, from, to, 10, accountId);
   const positive = categories.filter((category) => category.amount > 0);
   const refunds = categories.filter((category) => category.amount < 0);
   const spendingTotal = positive.reduce((sum, category) => sum + category.amount, 0);
 
   // the transaction list uses the month filter for one month, dates otherwise
-  const listQuery = rangeKey === "month" ? { m: month } : { from: coveredFrom, to: coveredTo };
+  const listQuery = {
+    ...(rangeKey === "month" ? { m: month } : { from: coveredFrom, to: coveredTo }),
+    account: accountId,
+  };
   const monthLabel = format.month(month);
   const periodLabel =
-    rangeKey === "month" ? monthLabel : `${format.date(coveredFrom)} – ${format.date(coveredTo)}`;
+    (rangeKey === "month" ? monthLabel : `${format.date(coveredFrom)} – ${format.date(coveredTo)}`) +
+    (account ? ` · ${account.name}` : "");
 
   // — charts —
   const trendFrom = (() => {
     const start = addMonths(bounds.max, -11);
     return start < bounds.min ? bounds.min : start;
   })();
-  const trend = getMonthlyTotals(db, trendFrom, bounds.max);
+  const trend = getMonthlyTotals(db, trendFrom, bounds.max, accountId);
   const partialNote = (monthValue: IsoMonth): string | undefined => {
     if (monthValue === monthOf(data.firstDate!) && dayOfMonth(data.firstDate!) > 1) {
       return t("spending.partialStarts", { date: format.dayMonth(data.firstDate!) });
@@ -148,7 +157,7 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
     }
     return undefined;
   };
-  const daily = rangeKey === "month" ? getDailySpending(db, month) : [];
+  const daily = rangeKey === "month" ? getDailySpending(db, month, accountId) : [];
   const dayOf = (index: number) => format.dayMonth(`${month}-${String(index + 1).padStart(2, "0")}`);
 
   return (
@@ -158,7 +167,11 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
           {RANGES.map((range) => (
             <Link
               key={range.key}
-              href={link("/spending", { range: range.key === "month" ? undefined : range.key, m: range.key === "month" ? month : undefined })}
+              href={link("/spending", {
+                range: range.key === "month" ? undefined : range.key,
+                m: range.key === "month" ? month : undefined,
+                account: accountId,
+              })}
               scroll={false}
               aria-current={range.key === rangeKey ? "true" : undefined}
               className={cn(
@@ -171,7 +184,15 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
           ))}
         </nav>
         {rangeKey === "month" ? (
-          <MonthSwitcher month={month} min={bounds.min} max={bounds.max} path="/spending" />
+          <MonthSwitcher month={month} min={bounds.min} max={bounds.max} path="/spending" query={{ account: accountId }} />
+        ) : null}
+        {accounts.length > 1 ? (
+          <AccountSelect
+            accounts={accounts.map(({ id, name }) => ({ id, name }))}
+            value={accountId === undefined ? "" : String(accountId)}
+            path="/spending"
+            query={rangeKey === "month" ? { m: month } : { range: rangeKey }}
+          />
         ) : null}
       </PageHeader>
 

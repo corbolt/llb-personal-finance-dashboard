@@ -189,6 +189,7 @@ export const deLI: Catalog = {
   "overview.compare.lessSoFar": "{amount} weniger als zum gleichen Zeitpunkt im {month}",
   "overview.balance": "Kontosaldo",
   "overview.balanceAll": "Saldo aller Konten",
+  "overview.balanceByAccount": "Saldo pro Konto",
   "overview.asOf": "per {date}",
   "overview.incomeIn": "Einnahmen im {month}",
   "overview.leftOver": "diesen Monat übrig",

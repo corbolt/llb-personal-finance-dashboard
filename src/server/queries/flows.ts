@@ -17,7 +17,15 @@ import type { Db } from "../db/database";
  *   income   – money coming in
  *   transfer – moves between own accounts, left out of both totals
  * Bookings the user excluded are ignored everywhere.
+ *
+ * Each aggregate takes an optional `accountId` to look at one account only;
+ * without it, all accounts count together.
  */
+
+/** The SQL condition and parameters that narrow a query to one account, if any. */
+function forAccount(accountId: number | undefined): { sql: string; params: number[] } {
+  return accountId === undefined ? { sql: "", params: [] } : { sql: " AND account_id = ?", params: [accountId] };
+}
 
 export interface PeriodTotals {
   income: number;
@@ -26,15 +34,16 @@ export interface PeriodTotals {
   transactionCount: number;
 }
 
-export function getTotals(db: Db, from: IsoDate, to: IsoDate): PeriodTotals {
+export function getTotals(db: Db, from: IsoDate, to: IsoDate, accountId?: number): PeriodTotals {
+  const account = forAccount(accountId);
   const row = db.get<{ income: number | null; spending: number | null; n: number }>(
     `SELECT
        SUM(CASE WHEN flow = 'income' THEN amount END) AS income,
        -SUM(CASE WHEN flow = 'expense' THEN amount END) AS spending,
        COUNT(*) AS n
      FROM transactions_view
-     WHERE excluded = 0 AND date BETWEEN ? AND ?`,
-    [from, to],
+     WHERE excluded = 0 AND date BETWEEN ? AND ?${account.sql}`,
+    [from, to, ...account.params],
   );
   const income = row?.income ?? 0;
   const spending = row?.spending ?? 0;
@@ -48,16 +57,22 @@ export interface MonthTotals {
 }
 
 /** Income and spending for every month in the range, including empty ones. */
-export function getMonthlyTotals(db: Db, fromMonth: IsoMonth, toMonth: IsoMonth): MonthTotals[] {
+export function getMonthlyTotals(
+  db: Db,
+  fromMonth: IsoMonth,
+  toMonth: IsoMonth,
+  accountId?: number,
+): MonthTotals[] {
+  const account = forAccount(accountId);
   const rows = db.all<{ month: string; income: number | null; spending: number | null }>(
     `SELECT
        substr(date, 1, 7) AS month,
        SUM(CASE WHEN flow = 'income' THEN amount END) AS income,
        -SUM(CASE WHEN flow = 'expense' THEN amount END) AS spending
      FROM transactions_view
-     WHERE excluded = 0 AND date BETWEEN ? AND ?
+     WHERE excluded = 0 AND date BETWEEN ? AND ?${account.sql}
      GROUP BY month`,
-    [monthStart(fromMonth), monthEnd(toMonth)],
+    [monthStart(fromMonth), monthEnd(toMonth), ...account.params],
   );
   const byMonth = new Map(rows.map((row) => [row.month, row]));
   return monthRange(fromMonth, toMonth).map((month) => ({
@@ -68,13 +83,14 @@ export function getMonthlyTotals(db: Db, fromMonth: IsoMonth, toMonth: IsoMonth)
 }
 
 /** Net spending per day of the month; index 0 is the 1st. */
-export function getDailySpending(db: Db, month: IsoMonth): number[] {
+export function getDailySpending(db: Db, month: IsoMonth, accountId?: number): number[] {
+  const account = forAccount(accountId);
   const rows = db.all<{ day: number; spending: number }>(
     `SELECT CAST(substr(date, 9, 2) AS INTEGER) AS day, -SUM(amount) AS spending
      FROM transactions_view
-     WHERE excluded = 0 AND flow = 'expense' AND date BETWEEN ? AND ?
+     WHERE excluded = 0 AND flow = 'expense' AND date BETWEEN ? AND ?${account.sql}
      GROUP BY day`,
-    [monthStart(month), monthEnd(month)],
+    [monthStart(month), monthEnd(month), ...account.params],
   );
   const days = new Array<number>(daysInMonth(month)).fill(0);
   for (const row of rows) days[row.day - 1] = row.spending;
@@ -97,7 +113,9 @@ function byCategory(
   flow: "expense" | "income",
   from: IsoDate,
   to: IsoDate,
+  accountId: number | undefined,
 ): CategoryAmount[] {
+  const account = forAccount(accountId);
   const sign = flow === "expense" ? "-" : "";
   return db.all<CategoryAmount>(
     `SELECT
@@ -108,20 +126,30 @@ function byCategory(
        ${sign}SUM(amount) AS amount,
        COUNT(*) AS count
      FROM transactions_view
-     WHERE excluded = 0 AND flow = ? AND date BETWEEN ? AND ?
+     WHERE excluded = 0 AND flow = ? AND date BETWEEN ? AND ?${account.sql}
      GROUP BY category_id
      ORDER BY amount DESC, name`,
-    [flow, from, to],
+    [flow, from, to, ...account.params],
   );
 }
 
 /** Net spending per category, largest first. */
-export function getSpendingByCategory(db: Db, from: IsoDate, to: IsoDate): CategoryAmount[] {
-  return byCategory(db, "expense", from, to);
+export function getSpendingByCategory(
+  db: Db,
+  from: IsoDate,
+  to: IsoDate,
+  accountId?: number,
+): CategoryAmount[] {
+  return byCategory(db, "expense", from, to, accountId);
 }
 
-export function getIncomeByCategory(db: Db, from: IsoDate, to: IsoDate): CategoryAmount[] {
-  return byCategory(db, "income", from, to);
+export function getIncomeByCategory(
+  db: Db,
+  from: IsoDate,
+  to: IsoDate,
+  accountId?: number,
+): CategoryAmount[] {
+  return byCategory(db, "income", from, to, accountId);
 }
 
 export interface MerchantAmount {
@@ -139,7 +167,9 @@ export function getTopMerchants(
   from: IsoDate,
   to: IsoDate,
   limit: number,
+  accountId?: number,
 ): MerchantAmount[] {
+  const account = forAccount(accountId);
   return db.all<MerchantAmount>(
     `SELECT
        merchant_key AS merchantKey,
@@ -149,12 +179,12 @@ export function getTopMerchants(
        MAX(category_name) AS categoryName,
        MAX(category_icon) AS categoryIcon
      FROM transactions_view
-     WHERE excluded = 0 AND flow = 'expense' AND date BETWEEN ? AND ?
+     WHERE excluded = 0 AND flow = 'expense' AND date BETWEEN ? AND ?${account.sql}
      GROUP BY merchant_key
      HAVING SUM(amount) < 0
      ORDER BY amount DESC, merchant
      LIMIT ?`,
-    [from, to, limit],
+    [from, to, ...account.params, limit],
   );
 }
 

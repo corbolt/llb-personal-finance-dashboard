@@ -128,6 +128,39 @@ describe("flows", () => {
       ["Hofladen Beispiel", 2000, 1],
     ]);
   });
+
+  it("narrows every aggregate to one account", () => {
+    const savings = db.run("INSERT INTO accounts (name) VALUES ('Savings')").lastInsertRowid;
+    ingestExport(db, {
+      filename: "savings.xlsx",
+      accountId: savings,
+      data: buildExport([
+        { reference: 901, bookedAt: "2026-03-09T04:00:00", valueDate: "2026-03-08", text: coop("2026-03-08T10:00:00"), amount: -70 },
+      ]),
+    });
+    const main = listAccounts(db)[0].id;
+
+    expect(getTotals(db, "2026-03-01", "2026-03-31").spending).toBe(209000);
+    expect(getTotals(db, "2026-03-01", "2026-03-31", main).spending).toBe(202000);
+    expect(getTotals(db, "2026-03-01", "2026-03-31", savings)).toEqual({
+      income: 0,
+      spending: 7000,
+      net: -7000,
+      transactionCount: 1,
+    });
+    expect(getMonthlyTotals(db, "2026-03", "2026-03", savings)).toEqual([
+      { month: "2026-03", income: 0, spending: 7000 },
+    ]);
+    expect(getDailySpending(db, "2026-03", savings)[7]).toBe(7000);
+    expect(getDailySpending(db, "2026-03", main)[7]).toBe(0);
+    expect(
+      getSpendingByCategory(db, "2026-03-01", "2026-03-31", savings).map((c) => [c.name, c.amount]),
+    ).toEqual([["Groceries", 7000]]);
+    expect(getIncomeByCategory(db, "2026-03-01", "2026-03-31", savings)).toEqual([]);
+    expect(
+      getTopMerchants(db, "2026-03-01", "2026-03-31", 10, savings).map((m) => [m.merchant, m.amount]),
+    ).toEqual([["Coop", 7000]]);
+  });
 });
 
 describe("accounts", () => {
