@@ -42,6 +42,10 @@ npm run build
 npm start
 ```
 
+To keep it running in the background, `./start.sh` starts it (building first if there is no build yet)
+and writes its output to `server.log`; `./stop.sh` stops it again. After pulling changes, run `pnpm build`
+before starting, so the server serves the new version.
+
 ## Importing
 
 1. In your online banking, export the account's transactions as Excel (`.xlsx`).
