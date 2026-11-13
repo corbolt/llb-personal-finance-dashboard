@@ -140,7 +140,12 @@ export function TransactionList({
                           <EyeOff aria-label={t("transactions.isExcluded")} className="size-3 shrink-0" />
                         ) : null}
                         <span className="truncate">
-                          {subline(t, row, showAccount ? accountNames[row.accountId] : undefined)}
+                          {subline(
+                            t,
+                            row,
+                            showAccount ? accountNames[row.accountId] : undefined,
+                            row.transferAccountId === null ? undefined : accountNames[row.transferAccountId],
+                          )}
                         </span>
                       </p>
                     </div>
@@ -179,15 +184,30 @@ export function TransactionList({
         onOpenChange={setSheetOpen}
         categories={categories}
         accountName={selected && showAccount ? accountNames[selected.accountId] : undefined}
+        transferAccountName={
+          selected?.transferAccountId == null ? undefined : accountNames[selected.transferAccountId]
+        }
         onCategoryChange={changeCategory}
       />
     </>
   );
 }
 
-function subline(t: Translator, row: TransactionItem, accountName: string | undefined): string {
+function subline(
+  t: Translator,
+  row: TransactionItem,
+  accountName: string | undefined,
+  transferAccountName: string | undefined,
+): string {
   const parts = [row.memo ?? row.location ?? kindLabel(t, row.kind)];
   if (accountName) parts.push(accountName);
+  if (transferAccountName) {
+    parts.push(
+      row.amount < 0
+        ? t("transactions.transferTo", { account: transferAccountName })
+        : t("transactions.transferFrom", { account: transferAccountName }),
+    );
+  }
   return parts.filter(Boolean).join(" · ");
 }
 

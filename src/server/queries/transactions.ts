@@ -30,6 +30,11 @@ export interface TransactionRow {
   flow: Flow;
   note: string | null;
   excluded: number;
+  /** The other side of a transfer between own accounts, if paired. */
+  transferId: number | null;
+  transferAccountId: number | null;
+  /** 1 when the user took a pair apart. */
+  transferUnpaired: number;
 }
 
 const COLUMNS = `
@@ -38,7 +43,10 @@ const COLUMNS = `
   kind, raw_text AS rawText, merchant, merchant_key AS merchantKey, location, memo,
   card_last4 AS cardLast4, reference, category_id AS categoryId,
   category_name AS categoryName, category_slug AS categorySlug, category_icon AS categoryIcon,
-  category_source AS categorySource, flow, note, excluded`;
+  category_source AS categorySource, flow, note, excluded,
+  transfer_id AS transferId,
+  (SELECT p.account_id FROM transactions p WHERE p.id = transactions_view.transfer_id) AS transferAccountId,
+  transfer_unpaired AS transferUnpaired`;
 
 export interface TransactionFilter {
   /** Free text; also matches an exact amount such as `45.15`. */
@@ -182,7 +190,7 @@ export function getUncategorisedMerchants(db: Db): UncategorisedMerchant[] {
        MAX(location) AS location,
        MAX(memo) AS memo
      FROM transactions
-     WHERE category_id IS NULL
+     WHERE category_id IS NULL AND transfer_id IS NULL
      GROUP BY merchant_key
      ORDER BY count DESC, ABS(SUM(amount)) DESC`,
   );
@@ -190,6 +198,6 @@ export function getUncategorisedMerchants(db: Db): UncategorisedMerchant[] {
 
 export function countUncategorised(db: Db): number {
   return (
-    db.get<{ n: number }>("SELECT COUNT(*) AS n FROM transactions WHERE category_id IS NULL")?.n ?? 0
+    db.get<{ n: number }>("SELECT COUNT(*) AS n FROM transactions WHERE category_id IS NULL AND transfer_id IS NULL")?.n ?? 0
   );
 }

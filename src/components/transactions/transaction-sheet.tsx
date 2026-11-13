@@ -5,7 +5,14 @@ import { Repeat, X } from "lucide-react";
 import { useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { ignoreRecurring, markRecurring, resetRecurring, setExcluded, setNote } from "@/app/actions";
+import {
+  ignoreRecurring,
+  markRecurring,
+  resetRecurring,
+  setExcluded,
+  setNote,
+  unpairTransfer,
+} from "@/app/actions";
 import { CategorySelect, type CategoryOption } from "@/components/category-select";
 import { Button } from "@/components/ui/button";
 import { NativeSelect, Textarea } from "@/components/ui/field";
@@ -26,6 +33,7 @@ export function TransactionSheet({
   onOpenChange,
   categories,
   accountName,
+  transferAccountName,
   onCategoryChange,
 }: {
   row: TransactionItem | null;
@@ -33,6 +41,8 @@ export function TransactionSheet({
   onOpenChange: (open: boolean) => void;
   categories: CategoryOption[];
   accountName?: string;
+  /** The account the other side of a paired transfer is on. */
+  transferAccountName?: string;
   onCategoryChange: (row: TransactionItem, categoryId: number | null, scope: "one" | "merchant") => void;
 }) {
   return (
@@ -47,6 +57,7 @@ export function TransactionSheet({
               row={row}
               categories={categories}
               accountName={accountName}
+              transferAccountName={transferAccountName}
               onCategoryChange={onCategoryChange}
             />
           ) : null}
@@ -60,11 +71,13 @@ function SheetBody({
   row,
   categories,
   accountName,
+  transferAccountName,
   onCategoryChange,
 }: {
   row: TransactionItem;
   categories: CategoryOption[];
   accountName?: string;
+  transferAccountName?: string;
   onCategoryChange: (row: TransactionItem, categoryId: number | null, scope: "one" | "merchant") => void;
 }) {
   const { t, format } = useI18n();
@@ -123,6 +136,28 @@ function SheetBody({
             </p>
           ) : null}
         </div>
+
+        {row.transferId !== null ? (
+          <Section title={t("sheet.transfer")}>
+            <p className="text-[13px] text-ink-2">
+              {row.amount < 0
+                ? t("sheet.pairedTo", { account: transferAccountName ?? "" })
+                : t("sheet.pairedFrom", { account: transferAccountName ?? "" })}
+            </p>
+            <Button
+              size="sm"
+              className="mt-3"
+              disabled={pending}
+              onClick={() => run(() => unpairTransfer(row.id), t("sheet.nowUnpaired"))}
+            >
+              {t("sheet.unpair")}
+            </Button>
+          </Section>
+        ) : row.transferUnpaired === 1 ? (
+          <Section title={t("sheet.transfer")}>
+            <p className="text-[13px] text-ink-2">{t("sheet.wasUnpaired")}</p>
+          </Section>
+        ) : null}
 
         <Section title={t("common.category")}>
           <CategorySelect

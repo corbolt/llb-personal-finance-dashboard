@@ -150,6 +150,13 @@ export async function setNote(transactionId: number, note: string): Promise<Acti
   });
 }
 
+export async function unpairTransfer(transactionId: number): Promise<ActionResult> {
+  return mutate(() => {
+    mutations.unpairTransfer(getDb(), id.parse(transactionId));
+    return null;
+  });
+}
+
 export async function setExcluded(transactionId: number, excluded: boolean): Promise<ActionResult> {
   return mutate(() => {
     mutations.setTransactionExcluded(getDb(), id.parse(transactionId), z.boolean().parse(excluded));
@@ -229,6 +236,13 @@ export async function createAccount(name: string): Promise<ActionResult<number>>
 export async function renameAccount(accountId: number, name: string): Promise<ActionResult> {
   return mutate(() => {
     mutations.renameAccount(getDb(), id.parse(accountId), z.string().max(200).parse(name));
+    return null;
+  });
+}
+
+export async function setAccountSavings(accountId: number, isSavings: boolean): Promise<ActionResult> {
+  return mutate(() => {
+    mutations.setAccountSavings(getDb(), id.parse(accountId), z.boolean().parse(isSavings));
     return null;
   });
 }

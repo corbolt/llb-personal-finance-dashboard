@@ -4,6 +4,7 @@ import { UserFacingError } from "./errors";
 import type { BookingKind } from "./import/booking-text";
 import { categorise } from "./import/categorize";
 import { loadCategoryLookup, loadUserRules } from "./import/ingest";
+export { unpairTransfer } from "./import/transfers";
 import { brandForKey, type Cadence } from "./import/merchants";
 import { fold } from "./import/text";
 
@@ -289,6 +290,11 @@ export function createAccount(db: Db, name: string, currency = "CHF"): number {
 
 export function renameAccount(db: Db, accountId: number, name: string): void {
   db.run("UPDATE accounts SET name = ? WHERE id = ?", [cleanAccountName(name), accountId]);
+}
+
+/** Marks an account as a savings account, or takes the mark away. */
+export function setAccountSavings(db: Db, accountId: number, isSavings: boolean): void {
+  db.run("UPDATE accounts SET is_savings = ? WHERE id = ?", [isSavings ? 1 : 0, accountId]);
 }
 
 /** Deletes an account, which is only possible while it holds no bookings. */

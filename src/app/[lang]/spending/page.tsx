@@ -37,9 +37,12 @@ import {
   getDailySpending,
   getIncomeByCategory,
   getMonthlyTotals,
+  getSaved,
+  getSavedByMonth,
   getSpendingByCategory,
   getTopMerchants,
   getTotals,
+  savingsRate,
 } from "@/server/queries/flows";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -78,7 +81,8 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
   const db = await requestDb();
   const { t, format, link } = await getI18n();
   // only accounts with bookings can be looked at on their own
-  const accounts = listAccounts(db).filter((account) => account.transactionCount > 0);
+  const allAccounts = listAccounts(db);
+  const accounts = allAccounts.filter((account) => account.transactionCount > 0);
   const account = accounts.find((candidate) => String(candidate.id) === param(query.account));
   const accountId = account?.id;
   const data = getDataRange(db, accountId);
@@ -131,6 +135,8 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
   const positive = categories.filter((category) => category.amount > 0);
   const refunds = categories.filter((category) => category.amount < 0);
   const spendingTotal = positive.reduce((sum, category) => sum + category.amount, 0);
+  const rate = savingsRate(totals.income, totals.spending);
+  const saved = getSaved(db, firstMonth, lastMonth, accountId);
 
   // the transaction list uses the month filter for one month, dates otherwise
   const listQuery = {
@@ -148,6 +154,11 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
     return start < bounds.min ? bounds.min : start;
   })();
   const trend = getMonthlyTotals(db, trendFrom, bounds.max, accountId);
+  const savedByMonth = getSavedByMonth(db, trendFrom, bounds.max, accountId);
+  const hasSavingsAccount = allAccounts.some((candidate) => candidate.isSavings);
+  // without a savings account, "saved" can still come from savings bookings
+  const showSaved = hasSavingsAccount || saved !== 0 || savedByMonth.some((entry) => entry.saved !== 0);
+  const share = (part: number, whole: number) => (whole > 0 ? Math.round((part * 100) / whole) : null);
   const partialNote = (monthValue: IsoMonth): string | undefined => {
     if (monthValue === monthOf(data.firstDate!) && dayOfMonth(data.firstDate!) > 1) {
       return t("spending.partialStarts", { date: format.dayMonth(data.firstDate!) });
@@ -196,16 +207,31 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
         ) : null}
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={cn("grid gap-4 sm:grid-cols-2", showSaved ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
         <StatTile label={t("flow.expense")} className="sm:col-span-2 lg:col-span-1">
           <Figure cents={totals.spending} />
         </StatTile>
         <StatTile label={t("flow.income")}>
           <Figure cents={totals.income} />
         </StatTile>
-        <StatTile label={t("common.net")}>
+        <StatTile
+          label={t("common.net")}
+          detail={rate === null ? undefined : t("savings.rate", { rate: format.percent(rate) })}
+        >
           <Figure cents={totals.net} />
         </StatTile>
+        {showSaved ? (
+          <StatTile
+            label={t("savings.saved")}
+            detail={
+              share(saved, totals.income) === null
+                ? undefined
+                : t("savings.ofIncome", { share: format.percent(share(saved, totals.income)!) })
+            }
+          >
+            <Figure cents={saved} />
+          </StatTile>
+        ) : null}
         <StatTile label={t("spending.perDay")} detail={t("spending.overDays", { count: coveredDays })}>
           <Figure cents={Math.round(totals.spending / coveredDays)} />
         </StatTile>
@@ -363,6 +389,84 @@ async function Spending({ searchParams }: Pick<PageProps<"/[lang]/spending">, "s
           ) : null}
         </div>
       </div>
+
+      <Card className="mt-4">
+        <CardHeader title={t("savings.title")} description={t("savings.description")} />
+        <div className="overflow-x-auto px-5 pb-4">
+          <table className="w-full text-[13px]">
+            <thead className="text-left text-ink-2">
+              <tr className="border-b border-hairline">
+                <th scope="col" className="py-2 pr-4 font-medium">{t("common.month")}</th>
+                <th scope="col" className="py-2 pl-4 text-right font-medium">{t("flow.income")}</th>
+                <th scope="col" className="py-2 pl-4 text-right font-medium">{t("flow.expense")}</th>
+                <th scope="col" className="py-2 pl-4 text-right font-medium">{t("savings.leftOver")}</th>
+                <th scope="col" className="py-2 pl-4 text-right font-medium">{t("savings.rateColumn")}</th>
+                {showSaved ? (
+                  <>
+                    <th scope="col" className="py-2 pl-4 text-right font-medium">{t("savings.saved")}</th>
+                    <th scope="col" className="py-2 pl-4 text-right font-medium">{t("savings.share")}</th>
+                  </>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody>
+              {trend
+                .map((entry, index) => ({ ...entry, saved: savedByMonth[index].saved }))
+                .reverse()
+                .map((entry) => {
+                  const monthRate = savingsRate(entry.income, entry.spending);
+                  const savedShare = share(entry.saved, entry.income);
+                  const partial = partialNote(entry.month);
+                  return (
+                    <tr key={entry.month} className="border-b border-hairline last:border-0">
+                      <th scope="row" className="py-1.5 pr-4 text-left font-normal whitespace-nowrap text-ink-2">
+                        {format.month(entry.month)}
+                        {partial ? (
+                          <span title={partial} className="ml-1.5 text-ink-3">
+                            ({t("savings.partial")})
+                          </span>
+                        ) : null}
+                      </th>
+                      <td className="py-1.5 pl-4 text-right text-ink tabular">
+                        <Money cents={entry.income} />
+                      </td>
+                      <td className="py-1.5 pl-4 text-right text-ink tabular">
+                        <Money cents={entry.spending} />
+                      </td>
+                      <td className="py-1.5 pl-4 text-right text-ink tabular">
+                        <Money cents={entry.income - entry.spending} />
+                      </td>
+                      <td className="py-1.5 pl-4 text-right text-ink tabular">
+                        {monthRate === null ? "–" : format.percent(monthRate)}
+                      </td>
+                      {showSaved ? (
+                        <>
+                          <td className="py-1.5 pl-4 text-right text-ink tabular">
+                            <Money cents={entry.saved} />
+                          </td>
+                          <td className="py-1.5 pl-4 text-right text-ink tabular">
+                            {savedShare === null ? "–" : format.percent(savedShare)}
+                          </td>
+                        </>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+          {hasSavingsAccount ? null : (
+            <p className="mt-3 border-t border-hairline pt-3 text-[13px] text-ink-2">
+              {t.rich("savings.noSavingsAccount", {
+                a: (content) => (
+                  <Link href={link("/import")} className="text-ink underline underline-offset-2">
+                    {content}
+                  </Link>
+                ),
+              })}
+            </p>
+          )}
+        </div>
+      </Card>
     </>
   );
 }

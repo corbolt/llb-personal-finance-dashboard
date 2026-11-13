@@ -5,6 +5,8 @@ export interface AccountSummary {
   id: number;
   name: string;
   currency: string;
+  /** Money moved into a savings account counts as saved. */
+  isSavings: boolean;
   /** Balance after the most recent booking, if the export carried balances. */
   balance: number | null;
   /** Booking day of the most recent booking. */
@@ -15,9 +17,9 @@ export interface AccountSummary {
 }
 
 export function listAccounts(db: Db): AccountSummary[] {
-  return db.all<AccountSummary>(
+  return db.all<Omit<AccountSummary, "isSavings"> & { isSavings: number }>(
     `SELECT
-       a.id, a.name, a.currency,
+       a.id, a.name, a.currency, a.is_savings AS isSavings,
        latest.balance AS balance,
        substr(latest.booked_at, 1, 10) AS balanceDate,
        COALESCE(stats.n, 0) AS transactionCount,
@@ -31,7 +33,7 @@ export function listAccounts(db: Db): AccountSummary[] {
      LEFT JOIN transactions latest
        ON latest.account_id = a.id AND latest.seq = stats.lastSeq
      ORDER BY a.id`,
-  );
+  ).map((account) => ({ ...account, isSavings: account.isSavings === 1 }));
 }
 
 export interface DataRange {

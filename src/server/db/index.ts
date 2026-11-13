@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { Db } from "./database";
 import { seedDefaultCategories } from "./default-categories";
+import { pairTransfers } from "../import/transfers";
 import { migrate } from "./migrations";
 
 export { Db } from "./database";
@@ -14,6 +15,8 @@ export function openDb(file: string): Db {
   const db = new Db(file);
   migrate(db);
   seedDefaultCategories(db);
+  // pairs transfers that were imported before pairing existed; a no-op afterwards
+  pairTransfers(db);
   return db;
 }
 

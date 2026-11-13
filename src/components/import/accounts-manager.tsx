@@ -1,10 +1,16 @@
 "use client";
 
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { createAccount, deleteAccount, renameAccount, type ActionResult } from "@/app/actions";
+import {
+  createAccount,
+  deleteAccount,
+  renameAccount,
+  setAccountSavings,
+  type ActionResult,
+} from "@/app/actions";
 import { Money } from "@/components/money";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -17,6 +23,11 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const [name, setName] = useState("");
   const [pending, startTransition] = useTransition();
+  // the checkbox follows a click at once, not only after the page refreshed
+  const [savingsShown, showSavings] = useOptimistic(
+    Object.fromEntries(accounts.map((account) => [account.id, account.isSavings])),
+    (state: Record<number, boolean>, [accountId, isSavings]: [number, boolean]) => ({ ...state, [accountId]: isSavings }),
+  );
 
   function submit(work: () => Promise<ActionResult<unknown>>, done: string) {
     startTransition(async () => {
@@ -27,6 +38,18 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
       }
       toast.success(done);
       setEditing(null);
+    });
+  }
+
+  function toggleSavings(account: AccountSummary, isSavings: boolean) {
+    startTransition(async () => {
+      showSavings([account.id, isSavings]);
+      const result = await setAccountSavings(account.id, isSavings);
+      if (!result.ok) {
+        toast.error(t.error(result.error));
+        return;
+      }
+      toast.success(t(isSavings ? "accounts.savingsOn" : "accounts.savingsOff", { name: account.name }));
     });
   }
 
@@ -81,6 +104,16 @@ export function AccountsManager({ accounts }: { accounts: AccountSummary[] }) {
                           to: format.date(account.lastDate!),
                         })}
                   </p>
+                  <label className="mt-1 inline-flex items-center gap-2 text-[13px] text-ink-2">
+                    <input
+                      type="checkbox"
+                      checked={savingsShown[account.id] ?? account.isSavings}
+                      disabled={pending}
+                      onChange={(event) => toggleSavings(account, event.target.checked)}
+                      className="accent-(--accent)"
+                    />
+                    {t("accounts.savings")}
+                  </label>
                 </div>
                 {account.balance !== null ? (
                   <div className="text-right">

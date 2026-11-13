@@ -11,6 +11,7 @@ import {
   deleteRule,
   forceRecurring,
   ignoreRecurring,
+  setAccountSavings,
   setBudget,
   setMerchantCategory,
   setTransactionCategory,
@@ -26,9 +27,12 @@ import {
   getDailySpending,
   getIncomeByCategory,
   getMonthlyTotals,
+  getSaved,
+  getSavedByMonth,
   getSpendingByCategory,
   getTopMerchants,
   getTotals,
+  savingsRate,
 } from "./flows";
 import { getRecurring, listIgnoredRecurring, upcomingCharges } from "./recurring";
 import { countUncategorised, getUncategorisedMerchants, listTransactions } from "./transactions";
@@ -163,6 +167,57 @@ describe("flows", () => {
   });
 });
 
+describe("savings", () => {
+  it("works out the savings rate from income and spending", () => {
+    expect(savingsRate(500000, 202000)).toBe(60);
+    expect(savingsRate(100000, 150000)).toBe(-50);
+    expect(savingsRate(0, 5000)).toBeNull();
+  });
+
+  it("counts nothing as saved without savings accounts or savings bookings", () => {
+    // the transfer on 5 March leaves the account, but nobody said where to
+    expect(getSaved(db, "2026-02", "2026-03")).toBe(0);
+  });
+
+  it("counts money moved into savings accounts and savings bookings elsewhere", () => {
+    const main = listAccounts(db)[0].id;
+    const savings = db.run("INSERT INTO accounts (name) VALUES ('Savings')").lastInsertRowid;
+    setAccountSavings(db, savings, true);
+    expect(listAccounts(db).map((account) => account.isSavings)).toEqual([false, true]);
+
+    const pillar3a = paymentText(["Vorsorge Beispiel", "8000 Zürich", "Schweiz", "Säule 3a Einzahlung"]);
+    ingestExport(db, {
+      filename: "savings.xlsx",
+      accountId: savings,
+      data: buildExport([
+        // the other side of the transfer on 5 March
+        { reference: 901, bookedAt: "2026-03-05T11:00:00", text: "E-Banking Kontoübertrag\nAuftragsnummer: 901", amount: 400 },
+        { reference: 902, bookedAt: "2026-03-20T11:00:00", text: "E-Banking Kontoübertrag\nAuftragsnummer: 902", amount: -100 },
+        // from one savings pot into another: neither saved nor taken back
+        { reference: 903, bookedAt: "2026-03-28T11:00:00", text: pillar3a, amount: -50 },
+      ]),
+    });
+    ingestExport(db, {
+      filename: "main.xlsx",
+      accountId: main,
+      data: buildExport(
+        [{ reference: 212, bookedAt: "2026-04-02T07:00:00", text: pillar3a, amount: -200 }],
+        { openingBalance: 6630 },
+      ),
+    });
+
+    expect(getSavedByMonth(db, "2026-03", "2026-04")).toEqual([
+      { month: "2026-03", saved: 30000 },
+      { month: "2026-04", saved: 20000 },
+    ]);
+    expect(getSaved(db, "2026-03", "2026-04", savings)).toBe(30000);
+    expect(getSaved(db, "2026-03", "2026-04", main)).toBe(20000);
+
+    // saving is no spending: the totals stay as they were
+    expect(getTotals(db, "2026-04-01", "2026-04-30").spending).toBe(0);
+  });
+});
+
 describe("accounts", () => {
   it("summarises the account with its latest balance", () => {
     expect(listAccounts(db)).toEqual([
@@ -170,6 +225,7 @@ describe("accounts", () => {
         id: 1,
         name: "LLB account",
         currency: "CHF",
+        isSavings: false,
         balance: 663000,
         balanceDate: "2026-03-27",
         transactionCount: 11,

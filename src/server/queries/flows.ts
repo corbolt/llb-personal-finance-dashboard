@@ -189,6 +189,68 @@ export function getTopMerchants(
 }
 
 /**
+ * The savings rate: the share of income that was not spent, in whole percent.
+ * Negative when more was spent than came in; `null` without income.
+ */
+export function savingsRate(income: number, spending: number): number | null {
+  if (income <= 0) return null;
+  return Math.round(((income - spending) * 100) / income);
+}
+
+export interface MonthSaved {
+  month: IsoMonth;
+  saved: number;
+}
+
+/**
+ * What was put aside, per month: money moved into savings accounts, plus
+ * bookings in "Savings & Investments" (pillar 3a, savings plans …) from any
+ * other account.
+ *
+ * On a savings account, every transfer counts — in as saved, out as taken
+ * back. Unpaired bookings in "Savings & Investments" there do not: they move
+ * money from one savings pot to another (pillar 3a, a fund).
+ *
+ * On other accounts, a "Savings & Investments" booking counts only while it is
+ * not paired with the other side of a transfer: a paired one is counted on
+ * the savings account it went to — or, between two everyday accounts, is no
+ * saving at all.
+ */
+export function getSavedByMonth(
+  db: Db,
+  fromMonth: IsoMonth,
+  toMonth: IsoMonth,
+  accountId?: number,
+): MonthSaved[] {
+  const account = forAccount(accountId);
+  const rows = db.all<{ month: string; saved: number }>(
+    `SELECT
+       substr(v.date, 1, 7) AS month,
+       SUM(CASE
+         WHEN a.is_savings = 1 THEN v.amount
+         ELSE -v.amount
+       END) AS saved
+     FROM transactions_view v
+     JOIN accounts a ON a.id = v.account_id
+     WHERE v.excluded = 0 AND v.date BETWEEN ? AND ?${account.sql}
+       AND (
+         (a.is_savings = 1 AND v.flow = 'transfer'
+           AND (v.transfer_id IS NOT NULL OR COALESCE(v.category_slug, '') != 'savings'))
+         OR (a.is_savings = 0 AND v.category_slug = 'savings' AND v.transfer_id IS NULL)
+       )
+     GROUP BY month`,
+    [monthStart(fromMonth), monthEnd(toMonth), ...account.params],
+  );
+  const byMonth = new Map(rows.map((row) => [row.month, row.saved]));
+  return monthRange(fromMonth, toMonth).map((month) => ({ month, saved: byMonth.get(month) ?? 0 }));
+}
+
+/** Total of `getSavedByMonth` over whole months. */
+export function getSaved(db: Db, fromMonth: IsoMonth, toMonth: IsoMonth, accountId?: number): number {
+  return getSavedByMonth(db, fromMonth, toMonth, accountId).reduce((sum, month) => sum + month.saved, 0);
+}
+
+/**
  * Average monthly net spending per category over the months before `month`.
  *
  * Looks back at most `lookback` months and uses only those the data covers

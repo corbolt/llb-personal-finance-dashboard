@@ -123,6 +123,44 @@ const migrations: Migration[] = [
       LEFT JOIN categories c ON c.id = t.category_id;
     `,
   },
+  {
+    version: 2,
+    name: "savings accounts",
+    sql: /* sql */ `
+      -- Money moved into a savings account counts as saved (see queries/flows.ts).
+      ALTER TABLE accounts
+        ADD COLUMN is_savings INTEGER NOT NULL DEFAULT 0 CHECK (is_savings IN (0, 1));
+    `,
+  },
+  {
+    version: 3,
+    name: "transfer pairs",
+    sql: /* sql */ `
+      -- The other side of a transfer between own accounts (see import/transfers.ts).
+      -- A paired booking always counts as a transfer, whatever its category.
+      ALTER TABLE transactions
+        ADD COLUMN transfer_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL;
+      -- Set when the user took a pair apart: never pair this booking automatically again.
+      ALTER TABLE transactions
+        ADD COLUMN transfer_unpaired INTEGER NOT NULL DEFAULT 0 CHECK (transfer_unpaired IN (0, 1));
+      CREATE INDEX transactions_transfer ON transactions(transfer_id);
+      CREATE INDEX transactions_amount ON transactions(amount);
+
+      DROP VIEW transactions_view;
+      CREATE VIEW transactions_view AS
+      SELECT
+        t.*,
+        c.name AS category_name,
+        c.slug AS category_slug,
+        c.icon AS category_icon,
+        CASE
+          WHEN t.transfer_id IS NOT NULL THEN 'transfer'
+          ELSE COALESCE(c.kind, CASE WHEN t.amount < 0 THEN 'expense' ELSE 'income' END)
+        END AS flow
+      FROM transactions t
+      LEFT JOIN categories c ON c.id = t.category_id;
+    `,
+  },
 ];
 
 export function migrate(db: Db): void {

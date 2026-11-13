@@ -11,6 +11,7 @@ import {
   type IncomingBooking,
 } from "./order";
 import { parseExport, type ParsedTransaction, type SkippedRow } from "./parse";
+import { pairTransfers } from "./transfers";
 
 /** What to call the account that the first import creates. */
 export interface AccountNames {
@@ -281,6 +282,15 @@ export function ingestExport(db: Db, input: IngestInput): IngestResult {
         },
       );
     });
+
+    // the other side of a transfer may have come with this file or an earlier one
+    pairTransfers(db);
+    // a paired transfer needs no category
+    result.uncategorised =
+      db.get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM transactions WHERE import_id = ? AND category_id IS NULL AND transfer_id IS NULL",
+        [result.importId],
+      )?.n ?? 0;
 
     return result;
   });

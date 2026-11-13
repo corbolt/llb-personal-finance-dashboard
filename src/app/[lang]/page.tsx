@@ -31,7 +31,7 @@ import { APP_NAME } from "@/lib/site";
 import { param } from "@/lib/url";
 import { requestDb } from "@/server/db/request";
 import { getDataRange, listAccounts } from "@/server/queries/accounts";
-import { getDailySpending, getSpendingByCategory, getTotals } from "@/server/queries/flows";
+import { getDailySpending, getSpendingByCategory, getTotals, savingsRate } from "@/server/queries/flows";
 import { getRecurring, upcomingCharges } from "@/server/queries/recurring";
 import { countUncategorised, listTransactions } from "@/server/queries/transactions";
 
@@ -127,6 +127,7 @@ async function Overview({ searchParams }: Pick<PageProps<"/[lang]">, "searchPara
     });
   }
 
+  const rate = savingsRate(totals.income, totals.spending);
   const positiveCategories = categories.filter((category) => category.amount > 0);
   const balanceTotal = accounts.reduce((sum, account) => sum + (account.balance ?? 0), 0);
   const balanceDate = accounts
@@ -217,7 +218,12 @@ async function Overview({ searchParams }: Pick<PageProps<"/[lang]">, "searchPara
           </StatTile>
           <StatTile
             label={t("common.net")}
-            detail={totals.net >= 0 ? t("overview.leftOver") : t("overview.overspent")}
+            detail={
+              <>
+                {totals.net >= 0 ? t("overview.leftOver") : t("overview.overspent")}
+                {rate === null ? null : <span className="block">{t("savings.rate", { rate: format.percent(rate) })}</span>}
+              </>
+            }
           >
             <Figure cents={totals.net} />
           </StatTile>

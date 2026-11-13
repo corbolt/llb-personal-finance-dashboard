@@ -28,6 +28,8 @@ export interface Formatters {
   monthShort(month: IsoMonth, withYear?: boolean): string;
   /** `3 days ago`, `in 5 days`, `today` — relative to `today`. */
   relativeDay(date: IsoDate, today: IsoDate): string;
+  /** `23%` — a whole percentage, in the language's spacing. */
+  percent(value: number): string;
   /** Axis tick label: `2’500` on a small axis, `7.5K` on a large one. */
   axisValue(units: number, axisMax: number): string;
 }
@@ -66,6 +68,7 @@ export function createFormatters(t: Translator): Formatters {
       if (delta === -1) return t("date.yesterday");
       return delta > 0 ? t("date.inDays", { count: delta }) : t("date.daysAgo", { count: -delta });
     },
+    percent: (value) => t("number.percent", { value: value < 0 ? `−${-value}` : String(value) }),
     axisValue: (units, axisMax) =>
       formatAxisValue(units, axisMax, {
         thousands: (value) => t("number.thousands", { value }),
